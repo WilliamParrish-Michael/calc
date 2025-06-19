@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Free Insurance Benefits Calculator</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { Calculator, DollarSign, Shield, Calendar, Info, RefreshCw } = lucide;
+
+        // Create icon components
+        const Icon = ({ icon: IconComponent, className }) => {
+            const ref = React.useRef(null);
+            
+            React.useEffect(() => {
+                if (ref.current && IconComponent) {
+                    const icon = IconComponent.prototype ? new IconComponent() : IconComponent;
+                    icon.attrs = { 
+                        width: 16, 
+                        height: 16, 
+                        ...icon.attrs 
+                    };
+                    ref.current.innerHTML = icon.render();
+                }
+            }, [IconComponent]);
+            
+            return <span ref={ref} className={className}></span>;
+        };
+
+        function InsuranceBenefitsCalculator() {
+            // Benefits information
+            const [benefits, setBenefits] = useState({
+                deductible: '',
+                deductibleMet: '',
+                oopMax: '',
+                oopMet: '',
+                coinsurance: '',
+                isInNetwork: true
+            });
+
+            // Service details with prefilled days
+            const [services, setServices] = useState({
+                detox: { selected: false, dailyRate: '', days: 7 },
+                residential: { selected: false, dailyRate: '', days: 21 },
+                php: { selected: false, dailyRate: '', days: 30 },
+                iop: { selected: false, dailyRate: '', days: 30 }
+            });
+
+            const [calculation, setCalculation] = useState(null);
+
+            // Service definitions
+            const serviceInfo = {
+                detox: {
+                    name: 'Detox',
+                    fullName: 'Medical Detoxification',
+                    description: 'Medically supervised withdrawal management',
+                    defaultRate: 800
+                },
+                residential: {
+                    name: 'Residential',
+                    fullName: 'Residential Treatment Center',
+                    description: 'Inpatient residential treatment program',
+                    defaultRate: 600
+                },
+                php: {
+                    name: 'PHP',
+                    fullName: 'Partial Hospitalization Program',
+                    description: 'Intensive day treatment program',
+                    defaultRate: 400
+                },
+                iop: {
+                    name: 'IOP',
+                    fullName: 'Intensive Outpatient Program',
+                    description: 'Structured outpatient treatment',
+                    defaultRate: 200
+                }
+            };
+
+            // Update benefits
+            const updateBenefit = (field, value) => {
+                setBenefits(prev => ({ ...prev, [field]: value }));
+            };
+
+            // Update service selection
+            const toggleService = (service) => {
+                setServices(prev => ({
+                    ...prev,
+                    [service]: {
+                        ...prev[service],
+                        selected: !prev[service].selected
+                    }
+                }));
+            };
+
+            // Update service details
+            const updateService = (service, field, value) => {
+                setServices(prev => ({
+                    ...prev,
+                    [service]: {
+                        ...prev[service],
+                        [field]: value
+                    }
+                }));
+            };
+
+            // Set default rates
+            const setDefaultRates = () => {
+                const newServices = { ...services };
+                Object.keys(services).forEach(service => {
+                    newServices[service].dailyRate = serviceInfo[service].defaultRate.toString();
+                });
+                setServices(newServices);
+            };
+
+            // Calculate client responsibility
+            const calculateResponsibility = () => {
+                const selectedServices = Object.entries(services)
+                    .filter(([_, service]) => service.selected && service.dailyRate && service.days)
+                    .map(([key, service]) => ({
+                        name: key,
+                        ...service,
+                        totalCost: parseFloat(service.dailyRate) * parseInt(service.days)
+                    }));
+
+                if (selectedServices.length === 0) return;
+
+                const deductible = parseFloat(benefits.deductible) || 0;
+                const deductibleMet = parseFloat(benefits.deductibleMet) || 0;
+                const oopMax = parseFloat(benefits.oopMax) || 0;
+                const oopMet = parseFloat(benefits.oopMet) || 0;
+                const coinsurance = parseFloat(benefits.coinsurance) || 0;
+
+                // Calculate totals
+                let totalProviderCharges = selectedServices.reduce((sum, service) => sum + service.totalCost, 0);
+                let allowedAmount = benefits.isInNetwork ? totalProviderCharges : totalProviderCharges * 0.8;
+                
+                // Calculate deductible responsibility
+                const remainingDeductible = Math.max(0, deductible - deductibleMet);
+                const deductibleResponsibility = Math.min(allowedAmount, remainingDeductible);
+                
+                // Calculate coinsurance
+                const amountAfterDeductible = Math.max(0, allowedAmount - deductibleResponsibility);
+                const coinsuranceResponsibility = amountAfterDeductible * (coinsurance / 100);
+                
+                // Total before OOP max
+                let totalResponsibility = deductibleResponsibility + coinsuranceResponsibility;
+                
+                // Apply OOP max
+                const remainingOOP = Math.max(0, oopMax - oopMet);
+                const finalResponsibility = oopMax > 0 ? Math.min(totalResponsibility, remainingOOP) : totalResponsibility;
+                
+                // Balance billing
+                const balanceBilling = !benefits.isInNetwork ? totalProviderCharges - allowedAmount : 0;
+                
+                // Final client cost
+                const totalClientCost = finalResponsibility + balanceBilling;
+                const insurancePays = allowedAmount - finalResponsibility;
+
+                setCalculation({
+                    services: selectedServices,
+                    tot
