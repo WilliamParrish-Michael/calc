@@ -30,8 +30,7 @@
                 deductibleMet: '',
                 oopMax: '',
                 oopMet: '',
-                coinsurance: '',
-                isInNetwork: true
+                coinsurance: ''
             });
 
             const [services, setServices] = useState({
@@ -118,8 +117,7 @@
                     deductibleMet: '',
                     oopMax: '',
                     oopMet: '',
-                    coinsurance: '',
-                    isInNetwork: true
+                    coinsurance: ''
                 });
                 setServices({
                     detox: { selected: false, dailyRate: '', days: 7 },
@@ -151,14 +149,13 @@
                 const coinsurance = parseFloat(benefits.coinsurance) || 0;
 
                 let totalProviderCharges = selectedServices.reduce((sum, service) => sum + service.totalCost, 0);
-                let allowedAmount = benefits.isInNetwork ? totalProviderCharges : totalProviderCharges * 0.8;
                 
                 const remainingDeductible = Math.max(0, deductible - deductibleMet);
                 const remainingOOP = Math.max(0, oopMax - oopMet);
                 
                 // Calculate theoretical responsibility before OOP max
-                const deductibleResponsibility = Math.min(allowedAmount, remainingDeductible);
-                const amountAfterDeductible = Math.max(0, allowedAmount - deductibleResponsibility);
+                const deductibleResponsibility = Math.min(totalProviderCharges, remainingDeductible);
+                const amountAfterDeductible = Math.max(0, totalProviderCharges - deductibleResponsibility);
                 const coinsuranceResponsibility = amountAfterDeductible * (coinsurance / 100);
                 
                 // Total theoretical responsibility
@@ -171,21 +168,16 @@
                 const actualDeductiblePaid = Math.min(deductibleResponsibility, remainingOOP);
                 const actualCoinsurancePaid = Math.max(0, actualResponsibility - actualDeductiblePaid);
                 
-                // Balance billing (only for out-of-network)
-                const balanceBilling = !benefits.isInNetwork ? totalProviderCharges - allowedAmount : 0;
-                
                 // Final client cost
-                const totalClientCost = actualResponsibility + balanceBilling;
-                const insurancePays = allowedAmount - actualResponsibility;
+                const totalClientCost = actualResponsibility;
+                const insurancePays = totalProviderCharges - actualResponsibility;
 
                 setCalculation({
                     services: selectedServices,
                     totals: {
                         providerCharges: totalProviderCharges,
-                        allowedAmount: allowedAmount,
                         deductibleApplied: actualDeductiblePaid,
                         coinsuranceAmount: actualCoinsurancePaid,
-                        balanceBilling: balanceBilling,
                         totalClientCost: totalClientCost,
                         insurancePays: insurancePays,
                         remainingDeductible: Math.max(0, remainingDeductible - actualDeductiblePaid),
@@ -285,27 +277,6 @@
                                                 placeholder="20"
                                             />
                                         </div>
-
-                                        <div className="flex items-center space-x-6 pt-2">
-                                            <label className="flex items-center cursor-pointer">
-                                                <input
-                                                    type="radio"
-                                                    checked={benefits.isInNetwork}
-                                                    onChange={() => updateBenefit('isInNetwork', true)}
-                                                    className="h-4 w-4 text-blue-600"
-                                                />
-                                                <span className="ml-2 text-sm font-medium text-gray-700">In-Network</span>
-                                            </label>
-                                            <label className="flex items-center cursor-pointer">
-                                                <input
-                                                    type="radio"
-                                                    checked={!benefits.isInNetwork}
-                                                    onChange={() => updateBenefit('isInNetwork', false)}
-                                                    className="h-4 w-4 text-blue-600"
-                                                />
-                                                <span className="ml-2 text-sm font-medium text-gray-700">Out-of-Network</span>
-                                            </label>
-                                        </div>
                                     </div>
                                 </div>
 
@@ -389,8 +360,8 @@
                                         {/* Insurance Rules - Simple */}
                                         <div className="bg-gray-50 rounded-lg p-4">
                                             <div className="text-sm text-gray-700 space-y-1">
-                                                <div>• Until Deductible: Insurance pays 0%</div>
-                                                <div>• After Deductible: You pay coinsurance {benefits.coinsurance || '[enter %]'}%</div>
+                                                <div>• Until Deductible: Client pays 100%</div>
+                                                <div>• After Deductible: Client pays coinsurance {benefits.coinsurance || '[enter %]'}%</div>
                                                 <div>• After OOP Max: Insurance pays 100%</div>
                                             </div>
                                         </div>
@@ -430,7 +401,7 @@
                                             </div>
                                             
                                             <div className="space-y-4">
-                                                {/* Option 1: Minimum Payment */}
+                                                {/* Option 1: Deductible Only */}
                                                 <div className="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                                                     <div className="flex justify-between items-start mb-2">
                                                         <div>
@@ -447,12 +418,12 @@
                                                     </div>
                                                     <div className="text-sm text-gray-600 space-y-2">
                                                         <div className="bg-gray-50 p-3 rounded">
-                                                            <div className="font-medium mb-1">What This Covers:</div>
+                                                            <div className="font-medium mb-1">Payment Breakdown:</div>
                                                             <div className="space-y-1 text-xs">
-                                                                <div>• Satisfies deductible responsibility</div>
-                                                                <div>• Insurance will then cover {100 - parseFloat(benefits.coinsurance || 0)}% of remaining</div>
-                                                                <div>• Remaining balance: ${(calculation.totals.totalClientCost - calculation.totals.deductibleApplied).toLocaleString()}</div>
-                                                                <div>• Future billing needed: ${calculation.totals.coinsuranceAmount.toLocaleString()}</div>
+                                                                <div>• Client pays now: ${calculation.totals.deductibleApplied.toLocaleString()}</div>
+                                                                <div>• Insurance pays: ${calculation.totals.insurancePays.toLocaleString()}</div>
+                                                                <div>• Remaining balance to collect: ${(calculation.totals.totalClientCost - calculation.totals.deductibleApplied).toLocaleString()}</div>
+                                                                <div className="font-semibold pt-1 border-t">Total Coverage: ${(calculation.totals.deductibleApplied + calculation.totals.insurancePays).toLocaleString()}</div>
                                                             </div>
                                                         </div>
                                                         <div className="text-xs text-gray-500">
@@ -461,14 +432,14 @@
                                                     </div>
                                                 </div>
 
-                                                {/* Option 2: Partial Payment */}
+                                                {/* Option 2: 50% of Client Responsibility */}
                                                 <div className="border-2 border-blue-200 rounded-lg p-4 hover:border-blue-400 transition-colors bg-blue-50">
                                                     <div className="flex justify-between items-start mb-2">
                                                         <div>
                                                             <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold mb-2">
                                                                 Option 2 - Partial
                                                             </span>
-                                                            <h5 className="font-semibold text-gray-800">Pay 50% of Total Responsibility</h5>
+                                                            <h5 className="font-semibold text-gray-800">Pay 50% of Client Responsibility</h5>
                                                         </div>
                                                         <div className="text-right">
                                                             <div className="text-2xl font-bold text-blue-700">
@@ -478,12 +449,12 @@
                                                     </div>
                                                     <div className="text-sm text-gray-600 space-y-2">
                                                         <div className="bg-blue-50 p-3 rounded border border-blue-200">
-                                                            <div className="font-medium mb-1">What This Covers:</div>
+                                                            <div className="font-medium mb-1">Payment Breakdown:</div>
                                                             <div className="space-y-1 text-xs">
-                                                                <div>• Substantial upfront payment showing good faith</div>
-                                                                <div>• Reduces financial risk for facility</div>
-                                                                <div>• Remaining to collect: ${Math.round(calculation.totals.totalClientCost * 0.5).toLocaleString()}</div>
-                                                                <div>• Can set up payment plan for balance</div>
+                                                                <div>• Client pays now: ${Math.round(calculation.totals.totalClientCost * 0.5).toLocaleString()}</div>
+                                                                <div>• Insurance pays: ${calculation.totals.insurancePays.toLocaleString()}</div>
+                                                                <div>• Remaining balance to collect: ${Math.round(calculation.totals.totalClientCost * 0.5).toLocaleString()}</div>
+                                                                <div className="font-semibold pt-1 border-t">Total Coverage: ${(Math.round(calculation.totals.totalClientCost * 0.5) + calculation.totals.insurancePays).toLocaleString()}</div>
                                                             </div>
                                                         </div>
                                                         <div className="text-xs text-blue-600">
@@ -492,42 +463,44 @@
                                                     </div>
                                                 </div>
 
-                                                {/* Option 3: Apply to OOP Progress */}
+                                                {/* Option 3: Full Client Responsibility */}
                                                 <div className="border-2 border-green-200 rounded-lg p-4 hover:border-green-400 transition-colors">
                                                     <div className="flex justify-between items-start mb-2">
                                                         <div>
                                                             <span className="inline-block px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold mb-2">
-                                                                Option 3 - Strategic
+                                                                Option 3 - Full Payment
                                                             </span>
-                                                            <h5 className="font-semibold text-gray-800">Pay Toward OOP Maximum</h5>
+                                                            <h5 className="font-semibold text-gray-800">Pay Full Client Responsibility</h5>
                                                         </div>
                                                         <div className="text-right">
                                                             <div className="text-2xl font-bold text-green-700">
-                                                                ${Math.min(calculation.totals.remainingOOP, calculation.totals.totalClientCost).toLocaleString()}
+                                                                ${calculation.totals.totalClientCost.toLocaleString()}
                                                             </div>
                                                         </div>
                                                     </div>
                                                     <div className="text-sm text-gray-600 space-y-2">
                                                         <div className="bg-green-50 p-3 rounded border border-green-200">
-                                                            <div className="font-medium mb-1">What This Covers:</div>
+                                                            <div className="font-medium mb-1">Payment Breakdown:</div>
                                                             <div className="space-y-1 text-xs">
-                                                                <div>• Makes maximum progress toward OOP limit</div>
-                                                                <div>• Remaining OOP after payment: ${Math.max(0, calculation.totals.remainingOOP - calculation.totals.totalClientCost).toLocaleString()}</div>
-                                                                {calculation.totals.remainingOOP <= calculation.totals.totalClientCost ? (
-                                                                    <div className="text-green-700 font-semibold">• Reaches OOP max - all future covered services FREE!</div>
-                                                                ) : (
-                                                                    <div>• Future services will have reduced client cost</div>
-                                                                )}
-                                                                <div>• Best long-term value for ongoing treatment</div>
+                                                                <div>• Client pays now: ${calculation.totals.totalClientCost.toLocaleString()}</div>
+                                                                <div>• Insurance pays: ${calculation.totals.insurancePays.toLocaleString()}</div>
+                                                                <div>• Remaining balance to collect: $0</div>
+                                                                <div className="font-semibold pt-1 border-t">Total Coverage: ${calculation.totals.providerCharges.toLocaleString()}</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-white p-3 rounded border border-green-300">
+                                                            <div className="text-center">
+                                                                <div className="text-lg font-bold text-green-700">✓ Paid in Full</div>
+                                                                <div className="text-xs text-green-600">No future billing required for this treatment</div>
                                                             </div>
                                                         </div>
                                                         <div className="text-xs text-green-600">
-                                                            Ideal for clients who will need ongoing treatment throughout the year
+                                                            Best for clients who can afford upfront payment and want certainty
                                                         </div>
                                                     </div>
                                                 </div>
 
-                                                {/* Option 4: Hardship/Compassionate Care */}
+                                                {/* Option 4: Minimum Viable Payment */}
                                                 <div className="border-2 border-purple-200 rounded-lg p-4 hover:border-purple-400 transition-colors bg-purple-50">
                                                     <div className="flex justify-between items-start mb-2">
                                                         <div>
@@ -538,18 +511,18 @@
                                                         </div>
                                                         <div className="text-right">
                                                             <div className="text-2xl font-bold text-purple-700">
-                                                                ${Math.min(1000, Math.round(calculation.totals.totalClientCost * 0.25)).toLocaleString()}
+                                                                $1,000
                                                             </div>
                                                         </div>
                                                     </div>
                                                     <div className="text-sm text-gray-600 space-y-2">
                                                         <div className="bg-purple-50 p-3 rounded border border-purple-200">
-                                                            <div className="font-medium mb-1">For Financial Hardship Cases:</div>
+                                                            <div className="font-medium mb-1">Payment Breakdown:</div>
                                                             <div className="space-y-1 text-xs">
-                                                                <div>• Allows treatment to proceed with minimal upfront cost</div>
-                                                                <div>• Shows good faith commitment to payment</div>
-                                                                <div>• Remaining balance: ${(calculation.totals.totalClientCost - Math.min(1000, Math.round(calculation.totals.totalClientCost * 0.25))).toLocaleString()}</div>
-                                                                <div>• Consider payment plan or financial assistance program</div>
+                                                                <div>• Client pays now: $1,000</div>
+                                                                <div>• Insurance pays: ${calculation.totals.insurancePays.toLocaleString()}</div>
+                                                                <div>• Remaining balance to collect: ${(calculation.totals.totalClientCost - 1000).toLocaleString()}</div>
+                                                                <div className="font-semibold pt-1 border-t">Total Coverage: ${(1000 + calculation.totals.insurancePays).toLocaleString()}</div>
                                                             </div>
                                                         </div>
                                                         <div className="text-xs text-purple-600">
@@ -557,23 +530,6 @@
                                                         </div>
                                                     </div>
                                                 </div>
-
-                                                {/* Balance Billing Notice */}
-                                                {calculation.totals.balanceBilling > 0 && (
-                                                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-                                                        <div className="flex items-start">
-                                                            <svg className="w-5 h-5 text-amber-600 mt-0.5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                                            </svg>
-                                                            <div>
-                                                                <p className="font-semibold text-amber-800">Out-of-Network Balance Billing</p>
-                                                                <p className="text-sm text-amber-700 mt-1">
-                                                                    Additional ${calculation.totals.balanceBilling.toLocaleString()} will be billed separately. This is NOT covered by out-of-pocket maximum.
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
                                             </div>
                                         </div>
 
@@ -601,13 +557,6 @@
                                                     <span className="font-medium">${calculation.totals.providerCharges.toLocaleString()}</span>
                                                 </div>
                                                 
-                                                {!benefits.isInNetwork && (
-                                                    <div className="flex justify-between items-center py-2">
-                                                        <span className="text-sm text-gray-600">Allowed Amount (Out-of-Network)</span>
-                                                        <span className="font-medium">${calculation.totals.allowedAmount.toLocaleString()}</span>
-                                                    </div>
-                                                )}
-                                                
                                                 <div className="flex justify-between items-center py-2 border-t pt-3">
                                                     <span className="text-sm text-gray-600">Deductible Applied</span>
                                                     <span className="font-medium text-red-600">-${calculation.totals.deductibleApplied.toLocaleString()}</span>
@@ -624,15 +573,8 @@
                                                             Out-of-Pocket Maximum Reached
                                                         </div>
                                                         <div className="text-xs text-green-600 mt-1">
-                                                            Responsibility capped at remaining OOP max: ${(parseFloat(benefits.oopMax) - parseFloat(benefits.oopMet)).toLocaleString()}
+                                                            Responsibility capped at remaining OOP max: ${(parseFloat(benefits.oopMax) - parseFloat(benefits.oopMet || 0)).toLocaleString()}
                                                         </div>
-                                                    </div>
-                                                )}
-                                                
-                                                {calculation.totals.balanceBilling > 0 && (
-                                                    <div className="flex justify-between items-center py-2">
-                                                        <span className="text-sm text-gray-600">Balance Billing (Out-of-Network)</span>
-                                                        <span className="font-medium text-red-600">-${calculation.totals.balanceBilling.toLocaleString()}</span>
                                                     </div>
                                                 )}
                                                 
@@ -746,7 +688,7 @@
 
                         {/* Footer */}
                         <div className="mt-8 text-center text-sm text-gray-500">
-                            <p>Free Insurance Benefits Calculator - Designed for Treatment Facilities</p>
+                            <p>Free Insurance Benefits Calculator - Streamlined for Treatment Facilities</p>
                         </div>
                     </div>
                 </div>
