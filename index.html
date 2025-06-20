@@ -48,13 +48,13 @@
                     name: 'Detox',
                     fullName: 'Medical Detoxification',
                     description: 'Medically supervised withdrawal management',
-                    defaultRate: 800
+                    defaultRate: 2600
                 },
                 residential: {
                     name: 'Residential',
                     fullName: 'Residential Treatment Center',
                     description: 'Inpatient residential treatment program',
-                    defaultRate: 600
+                    defaultRate: 2000
                 },
                 php: {
                     name: 'PHP',
@@ -75,10 +75,24 @@
             };
 
             const toggleService = (service) => {
-                setServices(prev => ({
-                    ...prev,
-                    [service]: { ...prev[service], selected: !prev[service].selected }
-                }));
+                setServices(prev => {
+                    const isCurrentlySelected = prev[service].selected;
+                    const newSelected = !isCurrentlySelected;
+                    
+                    // If turning on and no rate is set, use default rate
+                    const dailyRate = newSelected && !prev[service].dailyRate 
+                        ? serviceInfo[service].defaultRate.toString() 
+                        : prev[service].dailyRate;
+                    
+                    return {
+                        ...prev,
+                        [service]: { 
+                            ...prev[service], 
+                            selected: newSelected,
+                            dailyRate: dailyRate
+                        }
+                    };
+                });
             };
 
             const updateService = (service, field, value) => {
@@ -91,7 +105,9 @@
             const setDefaultRates = () => {
                 const newServices = { ...services };
                 Object.keys(services).forEach(service => {
-                    newServices[service].dailyRate = serviceInfo[service].defaultRate.toString();
+                    if (newServices[service].selected) {
+                        newServices[service].dailyRate = serviceInfo[service].defaultRate.toString();
+                    }
                 });
                 setServices(newServices);
             };
@@ -131,7 +147,7 @@
                 const deductible = parseFloat(benefits.deductible) || 0;
                 const deductibleMet = parseFloat(benefits.deductibleMet) || 0;
                 const oopMax = parseFloat(benefits.oopMax) || 0;
-                const oopMet = parseFloat(benefits.oopMet) || 0;
+                const oopMet = benefits.oopMet === '' ? 0 : parseFloat(benefits.oopMet) || 0;
                 const coinsurance = parseFloat(benefits.coinsurance) || 0;
 
                 let totalProviderCharges = selectedServices.reduce((sum, service) => sum + service.totalCost, 0);
@@ -301,7 +317,7 @@
                                             onClick={setDefaultRates}
                                             className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                                         >
-                                            Set Default Rates
+                                            Set Default Rates for Selected
                                         </button>
                                     </div>
 
@@ -637,19 +653,19 @@
                                                         <div className="w-full bg-gray-200 rounded-full h-2">
                                                             <div 
                                                                 className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                                                style={{width: `${Math.min(100, ((parseFloat(benefits.deductibleMet) || 0) / (parseFloat(benefits.deductible) || 1)) * 100)}%`}}
+                                                                style={{width: `${Math.min(100, ((parseFloat(benefits.deductibleMet) || 0) / Math.max(1, parseFloat(benefits.deductible) || 1)) * 100)}%`}}
                                                             ></div>
                                                         </div>
                                                     </div>
                                                     <div>
                                                         <div className="flex justify-between text-xs mb-1">
                                                             <span className="text-gray-600">Out-of-Pocket Progress</span>
-                                                            <span className="font-medium">${(parseFloat(benefits.oopMet) || 0).toLocaleString()} / ${(parseFloat(benefits.oopMax) || 0).toLocaleString()}</span>
+                                                            <span className="font-medium">${(benefits.oopMet === '' ? 0 : parseFloat(benefits.oopMet) || 0).toLocaleString()} / ${(parseFloat(benefits.oopMax) || 0).toLocaleString()}</span>
                                                         </div>
                                                         <div className="w-full bg-gray-200 rounded-full h-2">
                                                             <div 
                                                                 className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                                                                style={{width: `${Math.min(100, ((parseFloat(benefits.oopMet) || 0) / (parseFloat(benefits.oopMax) || 1)) * 100)}%`}}
+                                                                style={{width: `${Math.min(100, ((benefits.oopMet === '' ? 0 : parseFloat(benefits.oopMet) || 0) / Math.max(1, parseFloat(benefits.oopMax) || 1)) * 100)}%`}}
                                                             ></div>
                                                         </div>
                                                     </div>
