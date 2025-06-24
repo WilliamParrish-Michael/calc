@@ -407,44 +407,7 @@
             showResults(calculation);
         }
 
-        function calculateOOPMaxDay(calc) {
-            const deductible = parseFloat(document.getElementById('deductible').value) || 0;
-            const deductibleMet = parseFloat(document.getElementById('deductibleMet').value) || 0;
-            const oopMax = parseFloat(document.getElementById('oopMax').value) || 0;
-            const oopMet = parseFloat(document.getElementById('oopMet').value) || 0;
-            const coinsurance = parseFloat(document.getElementById('coinsurance').value) || 0;
-            
-            const remainingOOP = Math.max(0, oopMax - oopMet);
-            let remainingDeductible = Math.max(0, deductible - deductibleMet);
-            let cumulativeClientCost = 0;
-            let currentDay = 0;
-            
-            // Go through each service day by day
-            for (let service of calc.services) {
-                for (let day = 1; day <= service.days; day++) {
-                    currentDay++;
-                    let dailyClientCost;
-                    
-                    if (remainingDeductible > 0) {
-                        // During deductible phase - client pays 100%
-                        dailyClientCost = service.rate;
-                        remainingDeductible = Math.max(0, remainingDeductible - service.rate);
-                    } else {
-                        // During coinsurance phase - client pays percentage
-                        dailyClientCost = service.rate * (coinsurance / 100);
-                    }
-                    
-                    cumulativeClientCost += dailyClientCost;
-                    
-                    // Check if we've hit the OOP max
-                    if (cumulativeClientCost >= remainingOOP) {
-                        return currentDay;
-                    }
-                }
-            }
-            
-            return currentDay; // If somehow we get here
-        }
+        function generateDaysTo100Coverage(calc) {
             const deductible = parseFloat(document.getElementById('deductible').value) || 0;
             const deductibleMet = parseFloat(document.getElementById('deductibleMet').value) || 0;
             const oopMax = parseFloat(document.getElementById('oopMax').value) || 0;
@@ -670,7 +633,6 @@
 
         function showResults(calc) {
             const coinsurance = parseFloat(document.getElementById('coinsurance').value) || 0;
-            const oopMaxDay = calc.oopMaxReached ? calculateOOPMaxDay(calc) : null;
             
             document.getElementById('results-section').innerHTML = `
                 <div class="space-y-6">
@@ -689,7 +651,7 @@
                         <div class="text-center mb-6">
                             <div class="text-5xl font-bold mb-2">$${formatNumber(calc.totalClientCost)}</div>
                             <p class="text-blue-100">Total amount client will pay</p>
-                            ${calc.oopMaxReached ? `<div class="mt-3 bg-white/20 rounded-lg px-4 py-2 text-sm"><span class="font-semibold">✓ OOP Max Reached</span> - Capped at remaining maximum<br><span class="text-blue-200">Reached on day ${oopMaxDay} of treatment</span></div>` : ''}
+                            ${calc.oopMaxReached ? '<div class="mt-3 bg-white/20 rounded-lg px-4 py-2 text-sm"><span class="font-semibold">✓ OOP Max Reached</span> - Capped at remaining maximum</div>' : ''}
                         </div>
                         <div class="grid grid-cols-2 gap-4 text-sm">
                             <div class="bg-white/10 rounded p-3">
