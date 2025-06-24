@@ -8,6 +8,10 @@
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .collapse-transition {
+            transition: all 0.3s ease-in-out;
+            overflow: hidden;
+        }
     </style>
 </head>
 <body>
@@ -41,6 +45,7 @@
 
             // Calculation state
             const [calculation, setCalculation] = useState(null);
+            const [showDetailedBreakdown, setShowDetailedBreakdown] = useState(false);
 
             // Update benefit field
             const updateBenefit = (field, value) => {
@@ -97,45 +102,113 @@
                 const remainingDeductible = Math.max(0, deductible - deductibleMet);
                 const remainingOOP = Math.max(0, oopMax - oopMet);
 
-                // Calculate patient responsibility
-                const deductibleResponsibility = Math.min(allowedAmount, remainingDeductible);
-                const amountAfterDeductible = Math.max(0, allowedAmount - deductibleResponsibility);
-                const coinsuranceResponsibility = amountAfterDeductible * (coinsurance / 100);
-                
-                // Total responsibility before OOP max
-                const theoreticalResponsibility = deductibleResponsibility + coinsuranceResponsibility;
-                
-                // Apply OOP max limit
-                const actualResponsibility = Math.min(theoreticalResponsibility, remainingOOP);
-                
-                // Calculate actual payments
-                const actualDeductiblePaid = Math.min(deductibleResponsibility, remainingOOP);
-                const actualCoinsurancePaid = Math.max(0, actualResponsibility - actualDeductiblePaid);
-                
-                // Balance billing for out-of-network
-                const balanceBilling = !benefits.isInNetwork ? totalCharges - allowedAmount : 0;
-                
-                // Insurance payment
-                const insurancePays = allowedAmount - actualResponsibility;
-                
-                // Total client cost
-                const totalClientCost = actualResponsibility + balanceBilling;
+                // Track running totals for per-service calculations
+                let runningDeductibleUsed = 0;
+                let runningOOPUsed = 0;
+                let runningRemainingDeductible = remainingDeductible;
+                let runningRemainingOOP = remainingOOP;
+
+                // Calculate per-service breakdown
+                const servicesWithBreakdown = serviceDetails.map(service => {
+                    const serviceAllowed = benefits.isInNetwork ? service.totalCost : service.totalCost * 0.8;
+                    
+                    // Calculate deductible for this service
+                    const serviceDeductible = Math.min(serviceAllowed, runningRemainingDeductible);
+                    runningRemainingDeductible -= serviceDeductible;
+                    
+                    // Calculate coinsurance for this service
+                    const serviceAfterDeductible = serviceAllowed - serviceDeductible;
+                    const serviceCoinsurance = serviceAfterDeductible * (coinsurance / 100);
+                    
+                    // Total theoretical responsibility for this service
+                    const serviceTheoreticalResponsibility = serviceDeductible + serviceCoinsurance;
+                    
+                    // Apply OOP max
+                    const serviceActualResponsibility = Math.min(serviceTheoreticalResponsibility, runningRemainingOOP);
+                    runningRemainingOOP -= serviceActualResponsibility;
+                    
+                    // Balance billing for this service
+                    const serviceBalanceBilling = !benefits.isInNetwork ? service.totalCost - serviceAllowed : 0;
+                    
+                    // Insurance pays
+                    const serviceInsurancePays = serviceAllowed - serviceActualResponsibility;
+                    
+                    // Daily rates
+                    const clientDailyRate = (serviceActualResponsibility + serviceBalanceBilling) / parseInt(service.days);
+                    const insuranceDailyRate = serviceInsurancePays / parseInt(service.days);
+                    
+                    return {
+                        ...service,
+                        clientResponsibility: serviceActualResponsibility + serviceBalanceBilling,
+                        insurancePays: serviceInsurancePays,
+                        clientDailyRate,
+                        insuranceDailyRate,
+                        deductibleUsed: serviceDeductible,
+                        coinsuranceAmount: serviceActualResponsibility - serviceDeductible,
+                        balanceBilling: serviceBalanceBilling
+                    };
+                });
+
+                // Calculate totals
+                const totalClientCost = servicesWithBreakdown.reduce((sum, s) => sum + s.clientResponsibility, 0);
+                const totalInsurancePays = servicesWithBreakdown.reduce((sum, s) => sum + s.insurancePays, 0);
+                const totalDeductibleUsed = servicesWithBreakdown.reduce((sum, s) => sum + s.deductibleUsed, 0);
+                const totalCoinsuranceUsed = servicesWithBreakdown.reduce((sum, s) => sum + s.coinsuranceAmount, 0);
+                const totalBalanceBilling = servicesWithBreakdown.reduce((sum, s) => sum + s.balanceBilling, 0);
+
+                // Calculate days until 100% coverage
+                const daysToFullCoverage = calculateDaysToFullCoverage(
+                    servicesWithBreakdown,
+                    remainingOOP,
+                    remainingDeductible,
+                    coinsurance
+                );
 
                 setCalculation({
-                    services: serviceDetails,
+                    services: servicesWithBreakdown,
                     totalCharges,
                     allowedAmount,
-                    deductibleResponsibility: actualDeductiblePaid,
-                    coinsuranceResponsibility: actualCoinsurancePaid,
-                    balanceBilling,
-                    insurancePays,
+                    totalDeductibleUsed,
+                    totalCoinsuranceUsed,
+                    totalBalanceBilling,
+                    totalInsurancePays,
                     totalClientCost,
-                    remainingDeductible: Math.max(0, remainingDeductible - actualDeductiblePaid),
-                    remainingOOP: Math.max(0, remainingOOP - actualResponsibility),
-                    oopMaxReached: actualResponsibility < theoreticalResponsibility,
+                    remainingDeductible: Math.max(0, remainingDeductible - totalDeductibleUsed),
+                    remainingOOP: Math.max(0, remainingOOP - (totalDeductibleUsed + totalCoinsuranceUsed)),
+                    oopMaxReached: runningRemainingOOP === 0 && remainingOOP > 0,
                     coinsurancePercentage: coinsurance,
-                    insuranceCoinsurancePercentage: 100 - coinsurance
+                    insuranceCoinsurancePercentage: 100 - coinsurance,
+                    daysToFullCoverage,
+                    hasDeductible: deductible > 0
                 });
+            };
+
+            // Calculate days until 100% coverage
+            const calculateDaysToFullCoverage = (services, remainingOOP, remainingDeductible, coinsurance) => {
+                if (remainingOOP <= 0) return 0;
+                
+                // Calculate average daily cost across all services
+                const totalDays = services.reduce((sum, s) => sum + parseInt(s.days), 0);
+                const avgDailyRate = services.reduce((sum, s) => sum + s.totalCost, 0) / totalDays;
+                
+                // Calculate how much needs to be paid to reach OOP max
+                let amountToOOPMax = remainingOOP;
+                
+                // Simple calculation: days = amount needed / daily responsibility
+                // This is approximate since it depends on deductible/coinsurance split
+                let estimatedDays;
+                if (remainingDeductible > 0) {
+                    // Still in deductible phase - pay 100%
+                    const daysInDeductible = Math.min(remainingDeductible / avgDailyRate, amountToOOPMax / avgDailyRate);
+                    const remainingAfterDeductible = amountToOOPMax - (daysInDeductible * avgDailyRate);
+                    const daysInCoinsurance = remainingAfterDeductible / (avgDailyRate * (coinsurance / 100));
+                    estimatedDays = daysInDeductible + daysInCoinsurance;
+                } else {
+                    // Only coinsurance phase
+                    estimatedDays = amountToOOPMax / (avgDailyRate * (coinsurance / 100));
+                }
+                
+                return Math.ceil(estimatedDays);
             };
 
             // Recalculate when inputs change
@@ -145,7 +218,7 @@
 
             return (
                 <div className="min-h-screen bg-gray-50 p-4">
-                    <div className="max-w-6xl mx-auto">
+                    <div className="max-w-7xl mx-auto">
                         {/* Header */}
                         <div className="bg-white rounded-lg shadow p-6 mb-6">
                             <h1 className="text-2xl font-bold text-gray-800">Insurance Benefits Calculator</h1>
@@ -265,57 +338,81 @@
                                     <h2 className="text-lg font-semibold mb-4">Treatment Services</h2>
                                     
                                     <div className="space-y-3">
-                                        {services.map(service => (
-                                            <div key={service.id} className="border rounded-lg p-4">
-                                                <label className="flex items-center cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={service.selected}
-                                                        onChange={() => toggleService(service.id)}
-                                                        className="mr-3"
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="font-medium">{service.fullName}</div>
-                                                        <div className="text-sm text-gray-600">{service.name}</div>
-                                                    </div>
-                                                </label>
-                                                
-                                                {service.selected && (
-                                                    <div className="mt-3 ml-7 grid grid-cols-2 gap-3">
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                                Daily Rate ($)
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                                value={service.dailyRate}
-                                                                onChange={(e) => updateService(service.id, 'dailyRate', e.target.value)}
-                                                                placeholder="Enter rate"
-                                                            />
+                                        {services.map(service => {
+                                            const serviceCalc = calculation?.services.find(s => s.id === service.id);
+                                            
+                                            return (
+                                                <div key={service.id} className="border rounded-lg p-4">
+                                                    <label className="flex items-center cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={service.selected}
+                                                            onChange={() => toggleService(service.id)}
+                                                            className="mr-3"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <div className="font-medium">{service.fullName}</div>
+                                                            <div className="text-sm text-gray-600">{service.name}</div>
                                                         </div>
-                                                        <div>
-                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
-                                                                Number of Days
-                                                            </label>
-                                                            <input
-                                                                type="number"
-                                                                className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                                                value={service.days}
-                                                                onChange={(e) => updateService(service.id, 'days', e.target.value)}
-                                                            />
-                                                        </div>
-                                                        {service.dailyRate && service.days && (
-                                                            <div className="col-span-2 text-center p-2 bg-blue-50 rounded">
-                                                                <span className="text-sm font-semibold text-blue-700">
-                                                                    Total: ${(parseFloat(service.dailyRate) * parseInt(service.days)).toLocaleString()}
-                                                                </span>
+                                                    </label>
+                                                    
+                                                    {service.selected && (
+                                                        <div className="mt-3 ml-7">
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                                        Daily Rate ($)
+                                                                    </label>
+                                                                    <input
+                                                                        type="number"
+                                                                        className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                        value={service.dailyRate}
+                                                                        onChange={(e) => updateService(service.id, 'dailyRate', e.target.value)}
+                                                                        placeholder="Enter rate"
+                                                                    />
+                                                                </div>
+                                                                <div>
+                                                                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                                        Number of Days
+                                                                    </label>
+                                                                    <input
+                                                                        type="number"
+                                                                        className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                        value={service.days}
+                                                                        onChange={(e) => updateService(service.id, 'days', e.target.value)}
+                                                                    />
+                                                                </div>
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
+                                                            
+                                                            {service.dailyRate && service.days && (
+                                                                <div className="mt-3 space-y-2">
+                                                                    <div className="p-2 bg-blue-50 rounded">
+                                                                        <div className="text-sm font-semibold text-blue-700">
+                                                                            Service Total: ${(parseFloat(service.dailyRate) * parseInt(service.days)).toLocaleString()}
+                                                                        </div>
+                                                                    </div>
+                                                                    
+                                                                    {serviceCalc && (
+                                                                        <div className="grid grid-cols-2 gap-2 text-xs">
+                                                                            <div className="p-2 bg-red-50 rounded">
+                                                                                <div className="font-medium text-red-700">Client Pays</div>
+                                                                                <div>Total: ${serviceCalc.clientResponsibility.toFixed(2)}</div>
+                                                                                <div>Daily: ${serviceCalc.clientDailyRate.toFixed(2)}</div>
+                                                                            </div>
+                                                                            <div className="p-2 bg-green-50 rounded">
+                                                                                <div className="font-medium text-green-700">Insurance Pays</div>
+                                                                                <div>Total: ${serviceCalc.insurancePays.toFixed(2)}</div>
+                                                                                <div>Daily: ${serviceCalc.insuranceDailyRate.toFixed(2)}</div>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
@@ -332,12 +429,23 @@
                                                     ${calculation.totalClientCost.toLocaleString()}
                                                 </div>
                                                 <p className="text-blue-100">Total amount client will pay</p>
+                                                
+                                                {calculation.daysToFullCoverage > 0 && (
+                                                    <div className="mt-4 p-3 bg-white/20 rounded">
+                                                        <p className="text-sm font-medium">
+                                                            Days until 100% insurance coverage: {calculation.daysToFullCoverage} days
+                                                        </p>
+                                                        <p className="text-xs text-blue-100 mt-1">
+                                                            (When out-of-pocket maximum is reached)
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                             
                                             <div className="grid grid-cols-2 gap-4 mt-6">
                                                 <div className="bg-white/20 rounded p-3">
                                                     <div className="text-sm text-blue-100">Insurance Pays</div>
-                                                    <div className="text-xl font-semibold">${calculation.insurancePays.toLocaleString()}</div>
+                                                    <div className="text-xl font-semibold">${calculation.totalInsurancePays.toLocaleString()}</div>
                                                 </div>
                                                 <div className="bg-white/20 rounded p-3">
                                                     <div className="text-sm text-blue-100">Total Charges</div>
@@ -346,11 +454,134 @@
                                             </div>
                                         </div>
 
-                                        {/* Breakdown */}
+                                        {/* Payment Collection Options */}
                                         <div className="bg-white rounded-lg shadow p-6">
-                                            <h3 className="text-lg font-semibold mb-4">Cost Breakdown</h3>
+                                            <h3 className="text-lg font-semibold mb-4">Payment Collection Options</h3>
                                             
-                                            {/* Services */}
+                                            <div className="space-y-4">
+                                                {/* Option 1 - Emergency */}
+                                                <div className="border-2 border-red-200 rounded-lg p-4 bg-red-50">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <span className="text-sm font-semibold text-red-600">Option 1 - Emergency</span>
+                                                            <h4 className="font-semibold">Minimum Payment Required</h4>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-2xl font-bold text-red-700">
+                                                                ${Math.min(calculation.totalClientCost * 0.1, 500).toFixed(2)}
+                                                            </div>
+                                                            <div className="text-xs text-red-600">10% or $500 (whichever is less)</div>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 mt-2">
+                                                        Emergency payment option for financial hardship cases.
+                                                    </p>
+                                                </div>
+
+                                                {/* Option 2 - Deductible or Hardship */}
+                                                {calculation.hasDeductible && calculation.remainingDeductible > 0 ? (
+                                                    <div className="border-2 border-orange-200 rounded-lg p-4 bg-orange-50">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <span className="text-sm font-semibold text-orange-600">Option 2 - Deductible</span>
+                                                                <h4 className="font-semibold">Pay Remaining Deductible</h4>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-2xl font-bold text-orange-700">
+                                                                    ${Math.min(calculation.remainingDeductible, calculation.totalClientCost).toFixed(2)}
+                                                                </div>
+                                                                <div className="text-xs text-orange-600">Satisfies deductible requirement</div>
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-sm text-gray-600 mt-2">
+                                                            After deductible is met, patient pays only {calculation.coinsurancePercentage}% coinsurance.
+                                                        </p>
+                                                    </div>
+                                                ) : (
+                                                    <div className="border-2 border-yellow-200 rounded-lg p-4 bg-yellow-50">
+                                                        <div className="flex justify-between items-start">
+                                                            <div>
+                                                                <span className="text-sm font-semibold text-yellow-700">Option 2 - Hardship</span>
+                                                                <h4 className="font-semibold">Financial Hardship Payment</h4>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-2xl font-bold text-yellow-700">
+                                                                    ${(calculation.totalClientCost * 0.25).toFixed(2)}
+                                                                </div>
+                                                                <div className="text-xs text-yellow-600">25% of total responsibility</div>
+                                                            </div>
+                                                        </div>
+                                                        <p className="text-sm text-gray-600 mt-2">
+                                                            Reduced payment option for financial hardship situations.
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                {/* Option 3 - 50% Responsibility */}
+                                                <div className="border-2 border-blue-200 bg-blue-50 rounded-lg p-4">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <span className="text-sm font-semibold text-blue-600">Option 3 - Standard</span>
+                                                            <h4 className="font-semibold">Pay 50% of Responsibility</h4>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-2xl font-bold text-blue-700">
+                                                                ${(calculation.totalClientCost * 0.5).toFixed(2)}
+                                                            </div>
+                                                            <div className="text-xs text-blue-600">Half of total responsibility</div>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 mt-2">
+                                                        Standard payment option. Remaining balance can be billed or payment plan arranged.
+                                                    </p>
+                                                </div>
+
+                                                {/* Option 4 - 100% Responsibility */}
+                                                <div className="border-2 border-green-200 rounded-lg p-4 bg-green-50">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <span className="text-sm font-semibold text-green-600">Option 4 - Full Payment</span>
+                                                            <h4 className="font-semibold">Pay 100% of Responsibility</h4>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-2xl font-bold text-green-700">
+                                                                ${calculation.totalClientCost.toFixed(2)}
+                                                            </div>
+                                                            <div className="text-xs text-green-600">Complete payment</div>
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 mt-2">
+                                                        Full payment of all client responsibility. No remaining balance.
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Payment Summary */}
+                                            <div className="mt-4 p-3 bg-gray-100 rounded">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm font-medium">Client Total Responsibility:</span>
+                                                    <span className="font-bold">${calculation.totalClientCost.toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center mt-1">
+                                                    <span className="text-sm font-medium">Insurance Total Payment:</span>
+                                                    <span className="font-bold text-green-600">${calculation.totalInsurancePays.toFixed(2)}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Basic Breakdown */}
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <div className="flex justify-between items-center mb-4">
+                                                <h3 className="text-lg font-semibold">Cost Breakdown</h3>
+                                                <button
+                                                    onClick={() => setShowDetailedBreakdown(!showDetailedBreakdown)}
+                                                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                                                >
+                                                    {showDetailedBreakdown ? 'Hide' : 'Show'} Detailed Breakdown
+                                                </button>
+                                            </div>
+                                            
+                                            {/* Services Summary */}
                                             <div className="mb-6">
                                                 <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Services</h4>
                                                 {calculation.services.map((service, idx) => (
@@ -361,7 +592,7 @@
                                                 ))}
                                             </div>
 
-                                            {/* Calculations */}
+                                            {/* Basic Calculations */}
                                             <div className="space-y-2">
                                                 <div className="flex justify-between py-2">
                                                     <span className="text-sm">Total Provider Charges</span>
@@ -377,20 +608,20 @@
                                                 
                                                 <div className="flex justify-between py-2 border-t pt-3">
                                                     <span className="text-sm">Deductible Applied</span>
-                                                    <span className="font-medium text-red-600">-${calculation.deductibleResponsibility.toLocaleString()}</span>
+                                                    <span className="font-medium text-red-600">-${calculation.totalDeductibleUsed.toFixed(2)}</span>
                                                 </div>
                                                 
                                                 <div className="flex justify-between py-2">
                                                     <span className="text-sm">
                                                         Coinsurance ({calculation.coinsurancePercentage}% patient / {calculation.insuranceCoinsurancePercentage}% insurance)
                                                     </span>
-                                                    <span className="font-medium text-red-600">-${calculation.coinsuranceResponsibility.toLocaleString()}</span>
+                                                    <span className="font-medium text-red-600">-${calculation.totalCoinsuranceUsed.toFixed(2)}</span>
                                                 </div>
                                                 
-                                                {calculation.balanceBilling > 0 && (
+                                                {calculation.totalBalanceBilling > 0 && (
                                                     <div className="flex justify-between py-2">
                                                         <span className="text-sm">Balance Billing (Out-of-Network)</span>
-                                                        <span className="font-medium text-red-600">-${calculation.balanceBilling.toLocaleString()}</span>
+                                                        <span className="font-medium text-red-600">-${calculation.totalBalanceBilling.toFixed(2)}</span>
                                                     </div>
                                                 )}
                                                 
@@ -404,64 +635,85 @@
                                                 
                                                 <div className="flex justify-between py-3 border-t font-semibold">
                                                     <span>Total Client Responsibility</span>
-                                                    <span className="text-lg text-blue-600">${calculation.totalClientCost.toLocaleString()}</span>
+                                                    <span className="text-lg text-blue-600">${calculation.totalClientCost.toFixed(2)}</span>
                                                 </div>
                                             </div>
-                                        </div>
 
-                                        {/* Payment Options */}
-                                        <div className="bg-white rounded-lg shadow p-6">
-                                            <h3 className="text-lg font-semibold mb-4">Payment Collection Options</h3>
-                                            
-                                            <div className="space-y-4">
-                                                {/* Option 1 */}
-                                                <div className="border-2 border-gray-200 rounded-lg p-4">
-                                                    <div className="flex justify-between items-start">
-                                                        <div>
-                                                            <span className="text-sm font-semibold text-gray-600">Option 1</span>
-                                                            <h4 className="font-semibold">Pay Remaining Deductible</h4>
+                                            {/* Detailed Breakdown - Collapsible */}
+                                            {showDetailedBreakdown && (
+                                                <div className="mt-6 pt-6 border-t">
+                                                    <h4 className="text-sm font-semibold text-gray-700 mb-4">Detailed Service-by-Service Breakdown</h4>
+                                                    
+                                                    {calculation.services.map((service, idx) => (
+                                                        <div key={idx} className="mb-6 p-4 bg-gray-50 rounded">
+                                                            <h5 className="font-medium text-gray-800 mb-3">{service.fullName}</h5>
+                                                            
+                                                            <div className="grid grid-cols-2 gap-4 text-sm">
+                                                                <div>
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex justify-between">
+                                                                            <span className="text-gray-600">Service Charges:</span>
+                                                                            <span className="font-medium">${service.totalCost.toFixed(2)}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between">
+                                                                            <span className="text-gray-600">Days:</span>
+                                                                            <span className="font-medium">{service.days}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between">
+                                                                            <span className="text-gray-600">Daily Rate:</span>
+                                                                            <span className="font-medium">${service.dailyRate}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                
+                                                                <div>
+                                                                    <div className="space-y-1">
+                                                                        <div className="flex justify-between">
+                                                                            <span className="text-gray-600">Deductible Used:</span>
+                                                                            <span className="font-medium">${service.deductibleUsed.toFixed(2)}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between">
+                                                                            <span className="text-gray-600">Coinsurance:</span>
+                                                                            <span className="font-medium">${service.coinsuranceAmount.toFixed(2)}</span>
+                                                                        </div>
+                                                                        {service.balanceBilling > 0 && (
+                                                                            <div className="flex justify-between">
+                                                                                <span className="text-gray-600">Balance Bill:</span>
+                                                                                <span className="font-medium">${service.balanceBilling.toFixed(2)}</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div className="mt-3 pt-3 border-t grid grid-cols-2 gap-4">
+                                                                <div className="bg-red-100 p-2 rounded">
+                                                                    <div className="text-xs font-medium text-red-700">Client Responsibility</div>
+                                                                    <div className="text-sm font-bold text-red-800">${service.clientResponsibility.toFixed(2)}</div>
+                                                                    <div className="text-xs text-red-600">Daily: ${service.clientDailyRate.toFixed(2)}</div>
+                                                                </div>
+                                                                <div className="bg-green-100 p-2 rounded">
+                                                                    <div className="text-xs font-medium text-green-700">Insurance Pays</div>
+                                                                    <div className="text-sm font-bold text-green-800">${service.insurancePays.toFixed(2)}</div>
+                                                                    <div className="text-xs text-green-600">Daily: ${service.insuranceDailyRate.toFixed(2)}</div>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <div className="text-2xl font-bold">
-                                                            ${Math.min(calculation.remainingDeductible, calculation.remainingOOP).toLocaleString()}
+                                                    ))}
+                                                    
+                                                    {/* Benefit Progression */}
+                                                    <div className="mt-4 p-4 bg-blue-50 rounded">
+                                                        <h5 className="font-medium text-blue-800 mb-2">Benefit Usage Progression</h5>
+                                                        <div className="text-sm space-y-1">
+                                                            <div>• Services are calculated in the order listed above</div>
+                                                            <div>• Deductible is applied first to each service until met</div>
+                                                            <div>• Then coinsurance applies at {calculation.coinsurancePercentage}% patient / {calculation.insuranceCoinsurancePercentage}% insurance</div>
+                                                            <div>• All payments count toward out-of-pocket maximum</div>
+                                                            <div>• Once OOP max is reached, insurance pays 100% of allowed charges</div>
                                                         </div>
                                                     </div>
-                                                    <p className="text-sm text-gray-600 mt-2">
-                                                        Satisfies deductible requirement. After this, patient pays only {benefits.coinsurance}% coinsurance.
-                                                    </p>
                                                 </div>
-
-                                                {/* Option 2 */}
-                                                <div className="border-2 border-blue-200 bg-blue-50 rounded-lg p-4">
-                                                    <div className="flex justify-between items-start">
-                                                        <div>
-                                                            <span className="text-sm font-semibold text-blue-600">Option 2</span>
-                                                            <h4 className="font-semibold">Pay Half OOP Remaining</h4>
-                                                        </div>
-                                                        <div className="text-2xl font-bold text-blue-700">
-                                                            ${(calculation.remainingOOP * 0.5).toLocaleString()}
-                                                        </div>
-                                                    </div>
-                                                    <p className="text-sm text-gray-600 mt-2">
-                                                        Prepays 50% toward annual maximum. Reduces future collection needs.
-                                                    </p>
-                                                </div>
-
-                                                {/* Option 3 */}
-                                                <div className="border-2 border-green-200 rounded-lg p-4">
-                                                    <div className="flex justify-between items-start">
-                                                        <div>
-                                                            <span className="text-sm font-semibold text-green-600">Option 3</span>
-                                                            <h4 className="font-semibold">Pay Full OOP Maximum</h4>
-                                                        </div>
-                                                        <div className="text-2xl font-bold text-green-700">
-                                                            ${calculation.remainingOOP.toLocaleString()}
-                                                        </div>
-                                                    </div>
-                                                    <p className="text-sm text-gray-600 mt-2">
-                                                        Insurance pays 100% for covered services rest of year. Best value for ongoing treatment.
-                                                    </p>
-                                                </div>
-                                            </div>
+                                            )}
                                         </div>
 
                                         {/* Benefits Progress */}
@@ -480,6 +732,9 @@
                                                             style={{width: `${Math.min(100, ((parseFloat(benefits.deductibleMet) || 0) / (parseFloat(benefits.deductible) || 1)) * 100)}%`}}
                                                         />
                                                     </div>
+                                                    <div className="text-xs text-gray-600 mt-1">
+                                                        Remaining: ${calculation.remainingDeductible.toFixed(2)}
+                                                    </div>
                                                 </div>
                                                 
                                                 <div>
@@ -493,8 +748,22 @@
                                                             style={{width: `${Math.min(100, ((parseFloat(benefits.oopMet) || 0) / (parseFloat(benefits.oopMax) || 1)) * 100)}%`}}
                                                         />
                                                     </div>
+                                                    <div className="text-xs text-gray-600 mt-1">
+                                                        Remaining: ${calculation.remainingOOP.toFixed(2)}
+                                                    </div>
                                                 </div>
                                             </div>
+                                            
+                                            {calculation.daysToFullCoverage > 0 && (
+                                                <div className="mt-4 p-3 bg-green-50 rounded">
+                                                    <p className="text-sm font-medium text-green-700">
+                                                        📅 {calculation.daysToFullCoverage} more days of treatment until 100% insurance coverage
+                                                    </p>
+                                                    <p className="text-xs text-green-600 mt-1">
+                                                        Based on average daily rates of selected services
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 ) : (
