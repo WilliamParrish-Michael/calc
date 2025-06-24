@@ -371,6 +371,125 @@
             showResults(calculation);
         }
 
+        function generateDaysTo100Coverage(calc) {
+            const deductible = parseFloat(document.getElementById('deductible').value) || 0;
+            const deductibleMet = parseFloat(document.getElementById('deductibleMet').value) || 0;
+            const oopMax = parseFloat(document.getElementById('oopMax').value) || 0;
+            const oopMet = parseFloat(document.getElementById('oopMet').value) || 0;
+            const coinsurance = parseFloat(document.getElementById('coinsurance').value) || 0;
+            
+            const remainingOOP = Math.max(0, oopMax - oopMet);
+            const remainingDeductible = Math.max(0, deductible - deductibleMet);
+            
+            if (remainingOOP <= 0) {
+                return `
+                    <div class="text-center">
+                        <div class="text-3xl font-bold text-green-600 mb-2">0 Days</div>
+                        <p class="text-green-700 text-sm">Out-of-pocket maximum already reached - Insurance pays 100%!</p>
+                    </div>
+                `;
+            }
+            
+            // Calculate weighted average daily rate across all selected services
+            let totalServiceCost = 0;
+            let totalDays = 0;
+            
+            calc.services.forEach(service => {
+                totalServiceCost += service.total;
+                totalDays += service.days;
+            });
+            
+            const avgDailyRate = totalServiceCost / totalDays;
+            
+            // Calculate days needed to reach OOP max
+            let daysNeeded = 0;
+            let runningOOPUsed = 0;
+            let currentRemainingDeductible = remainingDeductible;
+            
+            // Phase 1: Days during deductible (client pays 100%)
+            if (currentRemainingDeductible > 0) {
+                const deductibleDays = Math.ceil(currentRemainingDeductible / avgDailyRate);
+                const deductibleCost = deductibleDays * avgDailyRate;
+                
+                if (deductibleCost >= remainingOOP) {
+                    // Will reach OOP max during deductible phase
+                    daysNeeded = Math.ceil(remainingOOP / avgDailyRate);
+                } else {
+                    // Need to continue past deductible into coinsurance
+                    daysNeeded += deductibleDays;
+                    runningOOPUsed += Math.min(deductibleCost, currentRemainingDeductible);
+                    currentRemainingDeductible = 0;
+                    
+                    // Phase 2: Days during coinsurance (client pays %)
+                    const remainingOOPAfterDeductible = remainingOOP - runningOOPUsed;
+                    const clientCoinsuranceRate = coinsurance / 100;
+                    const dailyClientCostInCoinsurance = avgDailyRate * clientCoinsuranceRate;
+                    
+                    if (dailyClientCostInCoinsurance > 0) {
+                        const coinsuranceDays = Math.ceil(remainingOOPAfterDeductible / dailyClientCostInCoinsurance);
+                        daysNeeded += coinsuranceDays;
+                    }
+                }
+            } else {
+                // Already past deductible, only coinsurance applies
+                const clientCoinsuranceRate = coinsurance / 100;
+                const dailyClientCostInCoinsurance = avgDailyRate * clientCoinsuranceRate;
+                
+                if (dailyClientCostInCoinsurance > 0) {
+                    daysNeeded = Math.ceil(remainingOOP / dailyClientCostInCoinsurance);
+                }
+            }
+            
+            // Calculate daily rates for different phases
+            const dailyDeductibleCost = avgDailyRate;
+            const dailyCoinsuranceCost = avgDailyRate * (coinsurance / 100);
+            
+            return `
+                <div class="text-center mb-4">
+                    <div class="text-3xl font-bold text-purple-600 mb-2">${daysNeeded} Days</div>
+                    <p class="text-purple-700 text-sm">Until client pays 0% and insurance covers 100% of treatment costs</p>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <div class="bg-white/60 rounded p-3 text-center">
+                        <div class="text-purple-600 font-medium text-sm">Remaining OOP Maximum</div>
+                        <div class="text-lg font-bold text-purple-800">${formatNumber(remainingOOP)}</div>
+                    </div>
+                    <div class="bg-white/60 rounded p-3 text-center">
+                        <div class="text-purple-600 font-medium text-sm">Average Daily Rate</div>
+                        <div class="text-lg font-bold text-purple-800">${formatNumber(avgDailyRate)}</div>
+                    </div>
+                    <div class="bg-white/60 rounded p-3 text-center">
+                        <div class="text-purple-600 font-medium text-sm">Current Phase</div>
+                        <div class="text-lg font-bold text-purple-800">${currentRemainingDeductible > 0 ? 'Deductible' : 'Coinsurance'}</div>
+                    </div>
+                </div>
+                
+                <div class="mt-4 space-y-2 text-sm">
+                    <div class="bg-white/60 rounded p-3">
+                        <div class="font-medium text-purple-700 mb-2">Daily Client Cost by Phase:</div>
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                                <span class="text-red-600">• Deductible Phase:</span> ${formatNumber(dailyDeductibleCost)}/day (100%)
+                            </div>
+                            <div>
+                                <span class="text-orange-600">• Coinsurance Phase:</span> ${formatNumber(dailyCoinsuranceCost)}/day (${coinsurance}%)
+                            </div>
+                        </div>
+                        <div class="mt-2 text-green-600 font-medium">
+                            • After ${daysNeeded} days: $0/day (0% - Insurance pays 100%)
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-4 text-center p-3 bg-green-50 rounded border border-green-200">
+                    <div class="text-sm text-green-700">
+                        <strong>Goal:</strong> After ${daysNeeded} more days of treatment, all covered services will be FREE for the rest of the year!
+                    </div>
+                </div>
+            `;
+        }
+
         function generateServiceBreakdown(calc) {
             const deductible = parseFloat(document.getElementById('deductible').value) || 0;
             const deductibleMet = parseFloat(document.getElementById('deductibleMet').value) || 0;
@@ -509,6 +628,16 @@
                             </div>
                         </div>
                     </div>
+
+                    ${calc.services.length > 0 && calc.remainingOOP > 0 ? `
+                    <!-- Days Until 100% Insurance Coverage -->
+                    <div class="bg-white rounded-lg shadow-sm p-6">
+                        <h4 class="text-lg font-semibold text-gray-800 mb-4">Days Until 0% Client Responsibility</h4>
+                        <div class="bg-gradient-to-r from-blue-100 to-purple-100 rounded-lg p-4">
+                            ${generateDaysTo100Coverage(calc)}
+                        </div>
+                    </div>
+                    ` : ''}
 
                     ${calc.services.length > 0 ? `
                     <!-- Client Responsibility Breakdown -->
