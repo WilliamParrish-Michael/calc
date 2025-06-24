@@ -6,426 +6,515 @@
     <title>Insurance Benefits Calculator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .service-selected {
-            border-color: #3B82F6 !important;
-            background-color: #EFF6FF !important;
-        }
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
-    <div class="max-w-6xl mx-auto p-4">
-        <!-- Header -->
-        <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h1 class="text-2xl font-bold text-gray-800 mb-2">Insurance Benefits Calculator</h1>
-            <p class="text-gray-600">Calculate client responsibility for treatment services and negotiate payment options</p>
-            <button onclick="resetAll()" class="mt-4 px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200">Reset Calculator</button>
-        </div>
+<body>
+    <div id="root"></div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <!-- Input Section -->
-            <div class="space-y-6">
-                <!-- Benefits Information -->
-                <div class="bg-white rounded-lg shadow-sm p-6">
-                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Insurance Benefits</h2>
-                    
-                    <div class="space-y-4">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Annual Deductible ($)</label>
-                                <input type="number" id="deductible" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="5000" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Deductible Met ($)</label>
-                                <input type="number" id="deductibleMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="1500" onkeyup="calculate()">
-                            </div>
-                        </div>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Out-of-Pocket Max ($)</label>
-                                <input type="number" id="oopMax" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="8000" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">OOP Met ($)</label>
-                                <input type="number" id="oopMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="2000" onkeyup="calculate()">
-                            </div>
-                        </div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Coinsurance (%)</label>
-                                <input type="number" id="coinsurance" min="0" max="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="20" onkeyup="updateInsurance(); calculate();">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Insurance Portion (%)</label>
-                                <input type="number" id="insurance" class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" readonly>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        function InsuranceBenefitsCalculator() {
+            // Insurance Benefits State
+            const [benefits, setBenefits] = useState({
+                deductible: '',
+                deductibleMet: '',
+                oopMax: '',
+                oopMet: '',
+                coinsurance: '',
+                isInNetwork: true
+            });
 
-                <!-- Treatment Services -->
-                <div class="bg-white rounded-lg shadow-sm p-6">
-                    <h2 class="text-lg font-semibold text-gray-800 mb-4">Treatment Services</h2>
-                    
-                    <!-- Detox -->
-                    <div class="border rounded-lg p-4 mb-3 cursor-pointer hover:bg-gray-50" id="detox-card" onclick="toggleService('detox')">
-                        <div class="flex items-center mb-3">
-                            <input type="checkbox" id="detox-check" class="mr-3">
-                            <div>
-                                <div class="font-medium">Medical Detoxification</div>
-                                <div class="text-sm text-gray-600">Medically supervised withdrawal management</div>
-                            </div>
-                        </div>
-                        <div id="detox-inputs" class="hidden grid-cols-3 gap-3">
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                <input type="number" id="detox-rate" value="2600" class="w-full px-2 py-1 border rounded text-sm" onclick="event.stopPropagation()" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Days</label>
-                                <input type="number" id="detox-days" value="7" class="w-full px-2 py-1 border rounded text-sm" onclick="event.stopPropagation()" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Total</label>
-                                <div id="detox-total" class="px-2 py-1 bg-blue-50 rounded text-sm font-semibold">$18,200</div>
-                            </div>
-                        </div>
-                    </div>
+            // Services State with default days
+            const [services, setServices] = useState([
+                { id: 'detox', name: 'Detox', fullName: 'Medical Detoxification', selected: false, dailyRate: '', days: '7' },
+                { id: 'residential', name: 'Residential', fullName: 'Residential Treatment', selected: false, dailyRate: '', days: '21' },
+                { id: 'php', name: 'PHP', fullName: 'Partial Hospitalization Program', selected: false, dailyRate: '', days: '30' },
+                { id: 'iop', name: 'IOP', fullName: 'Intensive Outpatient Program', selected: false, dailyRate: '', days: '30' }
+            ]);
 
-                    <!-- Residential -->
-                    <div class="border rounded-lg p-4 mb-3 cursor-pointer hover:bg-gray-50" id="residential-card" onclick="toggleService('residential')">
-                        <div class="flex items-center mb-3">
-                            <input type="checkbox" id="residential-check" class="mr-3">
-                            <div>
-                                <div class="font-medium">Residential Treatment Center</div>
-                                <div class="text-sm text-gray-600">Inpatient residential treatment program</div>
-                            </div>
-                        </div>
-                        <div id="residential-inputs" class="hidden grid-cols-3 gap-3">
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                <input type="number" id="residential-rate" value="2000" class="w-full px-2 py-1 border rounded text-sm" onclick="event.stopPropagation()" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Days</label>
-                                <input type="number" id="residential-days" value="21" class="w-full px-2 py-1 border rounded text-sm" onclick="event.stopPropagation()" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Total</label>
-                                <div id="residential-total" class="px-2 py-1 bg-blue-50 rounded text-sm font-semibold">$42,000</div>
-                            </div>
-                        </div>
-                    </div>
+            // Calculation state
+            const [calculation, setCalculation] = useState(null);
 
-                    <!-- PHP -->
-                    <div class="border rounded-lg p-4 mb-3 cursor-pointer hover:bg-gray-50" id="php-card" onclick="toggleService('php')">
-                        <div class="flex items-center mb-3">
-                            <input type="checkbox" id="php-check" class="mr-3">
-                            <div>
-                                <div class="font-medium">Partial Hospitalization Program (PHP)</div>
-                                <div class="text-sm text-gray-600">Intensive day treatment program</div>
-                            </div>
-                        </div>
-                        <div id="php-inputs" class="hidden grid-cols-3 gap-3">
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                <input type="number" id="php-rate" value="400" class="w-full px-2 py-1 border rounded text-sm" onclick="event.stopPropagation()" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Days</label>
-                                <input type="number" id="php-days" value="30" class="w-full px-2 py-1 border rounded text-sm" onclick="event.stopPropagation()" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Total</label>
-                                <div id="php-total" class="px-2 py-1 bg-blue-50 rounded text-sm font-semibold">$12,000</div>
-                            </div>
-                        </div>
-                    </div>
+            // Update benefit field
+            const updateBenefit = (field, value) => {
+                setBenefits(prev => ({ ...prev, [field]: value }));
+            };
 
-                    <!-- IOP -->
-                    <div class="border rounded-lg p-4 mb-3 cursor-pointer hover:bg-gray-50" id="iop-card" onclick="toggleService('iop')">
-                        <div class="flex items-center mb-3">
-                            <input type="checkbox" id="iop-check" class="mr-3">
-                            <div>
-                                <div class="font-medium">Intensive Outpatient Program (IOP)</div>
-                                <div class="text-sm text-gray-600">Structured outpatient treatment</div>
-                            </div>
-                        </div>
-                        <div id="iop-inputs" class="hidden grid-cols-3 gap-3">
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                <input type="number" id="iop-rate" value="200" class="w-full px-2 py-1 border rounded text-sm" onclick="event.stopPropagation()" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Days</label>
-                                <input type="number" id="iop-days" value="30" class="w-full px-2 py-1 border rounded text-sm" onclick="event.stopPropagation()" onkeyup="calculate()">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-700 mb-1">Total</label>
-                                <div id="iop-total" class="px-2 py-1 bg-blue-50 rounded text-sm font-semibold">$6,000</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            // Toggle service selection
+            const toggleService = (serviceId) => {
+                setServices(prev => prev.map(service => 
+                    service.id === serviceId 
+                        ? { ...service, selected: !service.selected }
+                        : service
+                ));
+            };
 
-            <!-- Results Section -->
-            <div>
-                <div id="results" class="bg-white rounded-lg shadow-sm p-6">
-                    <h3 class="text-lg font-semibold text-gray-800 mb-4">Results</h3>
-                    <div class="text-center py-8 text-gray-500">
-                        <div class="text-4xl mb-2">📊</div>
-                        <p>Select services and enter benefit information to see calculations</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+            // Update service field
+            const updateService = (serviceId, field, value) => {
+                setServices(prev => prev.map(service => 
+                    service.id === serviceId 
+                        ? { ...service, [field]: value }
+                        : service
+                ));
+            };
 
-    <script>
-        // Update insurance portion when coinsurance changes
-        function updateInsurance() {
-            const coinsurance = document.getElementById('coinsurance').value;
-            const insurance = document.getElementById('insurance');
-            
-            if (coinsurance && coinsurance >= 0 && coinsurance <= 100) {
-                insurance.value = 100 - parseFloat(coinsurance);
-            } else {
-                insurance.value = '';
-            }
-        }
+            // Calculate responsibility
+            const calculateResponsibility = () => {
+                // Get selected services with valid data
+                const selectedServices = services.filter(s => 
+                    s.selected && s.dailyRate && s.days
+                );
 
-        // Toggle service visibility
-        function toggleService(serviceName) {
-            const checkbox = document.getElementById(serviceName + '-check');
-            const inputs = document.getElementById(serviceName + '-inputs');
-            const card = document.getElementById(serviceName + '-card');
-
-            checkbox.checked = !checkbox.checked;
-
-            if (checkbox.checked) {
-                inputs.classList.remove('hidden');
-                inputs.classList.add('grid');
-                card.classList.add('service-selected');
-            } else {
-                inputs.classList.add('hidden');
-                inputs.classList.remove('grid');
-                card.classList.remove('service-selected');
-            }
-
-            updateServiceTotal(serviceName);
-            calculate();
-        }
-
-        // Update individual service total
-        function updateServiceTotal(serviceName) {
-            const rate = parseFloat(document.getElementById(serviceName + '-rate').value) || 0;
-            const days = parseFloat(document.getElementById(serviceName + '-days').value) || 0;
-            const total = rate * days;
-            
-            document.getElementById(serviceName + '-total').textContent = '$' + total.toLocaleString();
-        }
-
-        // Main calculation function
-        function calculate() {
-            // Update all service totals first
-            ['detox', 'residential', 'php', 'iop'].forEach(service => {
-                if (document.getElementById(service + '-check').checked) {
-                    updateServiceTotal(service);
+                if (selectedServices.length === 0) {
+                    setCalculation(null);
+                    return;
                 }
-            });
 
-            // Get selected services
-            const selectedServices = [];
-            ['detox', 'residential', 'php', 'iop'].forEach(service => {
-                if (document.getElementById(service + '-check').checked) {
-                    const rate = parseFloat(document.getElementById(service + '-rate').value) || 0;
-                    const days = parseFloat(document.getElementById(service + '-days').value) || 0;
-                    if (rate > 0 && days > 0) {
-                        selectedServices.push({
-                            name: service,
-                            rate: rate,
-                            days: days,
-                            total: rate * days
-                        });
-                    }
-                }
-            });
+                // Parse benefit values
+                const deductible = parseFloat(benefits.deductible) || 0;
+                const deductibleMet = parseFloat(benefits.deductibleMet) || 0;
+                const oopMax = parseFloat(benefits.oopMax) || 0;
+                const oopMet = parseFloat(benefits.oopMet) || 0;
+                const coinsurance = parseFloat(benefits.coinsurance) || 0;
 
-            if (selectedServices.length === 0) {
-                showNoResults();
-                return;
-            }
+                // Calculate service totals
+                const serviceDetails = selectedServices.map(service => ({
+                    ...service,
+                    totalCost: parseFloat(service.dailyRate) * parseInt(service.days)
+                }));
 
-            // Get benefit values
-            const deductible = parseFloat(document.getElementById('deductible').value) || 0;
-            const deductibleMet = parseFloat(document.getElementById('deductibleMet').value) || 0;
-            const oopMax = parseFloat(document.getElementById('oopMax').value) || 0;
-            const oopMet = parseFloat(document.getElementById('oopMet').value) || 0;
-            const coinsurance = parseFloat(document.getElementById('coinsurance').value) || 0;
+                const totalCharges = serviceDetails.reduce((sum, s) => sum + s.totalCost, 0);
+                const allowedAmount = benefits.isInNetwork ? totalCharges : totalCharges * 0.8;
 
-            // Calculate totals
-            const totalCharges = selectedServices.reduce((sum, service) => sum + service.total, 0);
-            const remainingDeductible = Math.max(0, deductible - deductibleMet);
-            const remainingOOP = Math.max(0, oopMax - oopMet);
+                // Calculate remaining benefits
+                const remainingDeductible = Math.max(0, deductible - deductibleMet);
+                const remainingOOP = Math.max(0, oopMax - oopMet);
 
-            // Calculate client responsibility
-            const deductibleApplied = Math.min(totalCharges, remainingDeductible);
-            const amountAfterDeductible = Math.max(0, totalCharges - deductibleApplied);
-            const coinsuranceAmount = amountAfterDeductible * (coinsurance / 100);
-            const totalClientResponsibility = deductibleApplied + coinsuranceAmount;
-            const finalClientCost = Math.min(totalClientResponsibility, remainingOOP);
-            const insurancePays = totalCharges - finalClientCost;
-
-            showResults({
-                totalCharges: totalCharges,
-                clientCost: finalClientCost,
-                insurancePays: insurancePays,
-                deductibleApplied: deductibleApplied,
-                coinsuranceAmount: Math.max(0, finalClientCost - deductibleApplied),
-                services: selectedServices
-            });
-        }
-
-        // Show calculation results
-        function showResults(calc) {
-            const resultsDiv = document.getElementById('results');
-            resultsDiv.innerHTML = `
-                <h3 class="text-lg font-semibold text-gray-800 mb-4">Calculation Results</h3>
+                // Calculate patient responsibility
+                const deductibleResponsibility = Math.min(allowedAmount, remainingDeductible);
+                const amountAfterDeductible = Math.max(0, allowedAmount - deductibleResponsibility);
+                const coinsuranceResponsibility = amountAfterDeductible * (coinsurance / 100);
                 
-                <!-- Main Result -->
-                <div class="bg-blue-600 text-white rounded-lg p-6 mb-6">
-                    <div class="text-center">
-                        <div class="text-4xl font-bold mb-2">$${calc.clientCost.toLocaleString()}</div>
-                        <div class="text-blue-100">Total Client Responsibility</div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4 mt-4 text-sm">
-                        <div class="bg-blue-500 rounded p-3 text-center">
-                            <div class="text-blue-100">Insurance Pays</div>
-                            <div class="text-xl font-bold">$${calc.insurancePays.toLocaleString()}</div>
+                // Total responsibility before OOP max
+                const theoreticalResponsibility = deductibleResponsibility + coinsuranceResponsibility;
+                
+                // Apply OOP max limit
+                const actualResponsibility = Math.min(theoreticalResponsibility, remainingOOP);
+                
+                // Calculate actual payments
+                const actualDeductiblePaid = Math.min(deductibleResponsibility, remainingOOP);
+                const actualCoinsurancePaid = Math.max(0, actualResponsibility - actualDeductiblePaid);
+                
+                // Balance billing for out-of-network
+                const balanceBilling = !benefits.isInNetwork ? totalCharges - allowedAmount : 0;
+                
+                // Insurance payment
+                const insurancePays = allowedAmount - actualResponsibility;
+                
+                // Total client cost
+                const totalClientCost = actualResponsibility + balanceBilling;
+
+                setCalculation({
+                    services: serviceDetails,
+                    totalCharges,
+                    allowedAmount,
+                    deductibleResponsibility: actualDeductiblePaid,
+                    coinsuranceResponsibility: actualCoinsurancePaid,
+                    balanceBilling,
+                    insurancePays,
+                    totalClientCost,
+                    remainingDeductible: Math.max(0, remainingDeductible - actualDeductiblePaid),
+                    remainingOOP: Math.max(0, remainingOOP - actualResponsibility),
+                    oopMaxReached: actualResponsibility < theoreticalResponsibility,
+                    coinsurancePercentage: coinsurance,
+                    insuranceCoinsurancePercentage: 100 - coinsurance
+                });
+            };
+
+            // Recalculate when inputs change
+            useEffect(() => {
+                calculateResponsibility();
+            }, [benefits, services]);
+
+            return (
+                <div className="min-h-screen bg-gray-50 p-4">
+                    <div className="max-w-6xl mx-auto">
+                        {/* Header */}
+                        <div className="bg-white rounded-lg shadow p-6 mb-6">
+                            <h1 className="text-2xl font-bold text-gray-800">Insurance Benefits Calculator</h1>
+                            <p className="text-gray-600 mt-1">Calculate client responsibility for treatment services</p>
                         </div>
-                        <div class="bg-blue-500 rounded p-3 text-center">
-                            <div class="text-blue-100">Total Charges</div>
-                            <div class="text-xl font-bold">$${calc.totalCharges.toLocaleString()}</div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Left Column - Inputs */}
+                            <div className="space-y-6">
+                                {/* Insurance Benefits */}
+                                <div className="bg-white rounded-lg shadow p-6">
+                                    <h2 className="text-lg font-semibold mb-4">Insurance Benefits</h2>
+                                    
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Annual Deductible ($)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    value={benefits.deductible}
+                                                    onChange={(e) => updateBenefit('deductible', e.target.value)}
+                                                    placeholder="5000"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Deductible Met ($)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    value={benefits.deductibleMet}
+                                                    onChange={(e) => updateBenefit('deductibleMet', e.target.value)}
+                                                    placeholder="1500"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Out-of-Pocket Max ($)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    value={benefits.oopMax}
+                                                    onChange={(e) => updateBenefit('oopMax', e.target.value)}
+                                                    placeholder="8000"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    OOP Met ($)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    value={benefits.oopMet}
+                                                    onChange={(e) => updateBenefit('oopMet', e.target.value)}
+                                                    placeholder="2000"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Coinsurance (Patient %)
+                                            </label>
+                                            <div className="flex items-center space-x-2">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    max="100"
+                                                    className="w-24 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    value={benefits.coinsurance}
+                                                    onChange={(e) => updateBenefit('coinsurance', e.target.value)}
+                                                    placeholder="20"
+                                                />
+                                                <span className="text-sm text-gray-600">%</span>
+                                                {benefits.coinsurance && (
+                                                    <span className="text-sm text-gray-600 ml-4">
+                                                        (Insurance pays: {100 - parseFloat(benefits.coinsurance)}%)
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center space-x-6">
+                                            <label className="flex items-center cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    checked={benefits.isInNetwork}
+                                                    onChange={() => updateBenefit('isInNetwork', true)}
+                                                    className="mr-2"
+                                                />
+                                                <span className="text-sm font-medium">In-Network</span>
+                                            </label>
+                                            <label className="flex items-center cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    checked={!benefits.isInNetwork}
+                                                    onChange={() => updateBenefit('isInNetwork', false)}
+                                                    className="mr-2"
+                                                />
+                                                <span className="text-sm font-medium">Out-of-Network</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Treatment Services */}
+                                <div className="bg-white rounded-lg shadow p-6">
+                                    <h2 className="text-lg font-semibold mb-4">Treatment Services</h2>
+                                    
+                                    <div className="space-y-3">
+                                        {services.map(service => (
+                                            <div key={service.id} className="border rounded-lg p-4">
+                                                <label className="flex items-center cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={service.selected}
+                                                        onChange={() => toggleService(service.id)}
+                                                        className="mr-3"
+                                                    />
+                                                    <div className="flex-1">
+                                                        <div className="font-medium">{service.fullName}</div>
+                                                        <div className="text-sm text-gray-600">{service.name}</div>
+                                                    </div>
+                                                </label>
+                                                
+                                                {service.selected && (
+                                                    <div className="mt-3 ml-7 grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                                Daily Rate ($)
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                value={service.dailyRate}
+                                                                onChange={(e) => updateService(service.id, 'dailyRate', e.target.value)}
+                                                                placeholder="Enter rate"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                                Number of Days
+                                                            </label>
+                                                            <input
+                                                                type="number"
+                                                                className="w-full px-2 py-1 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                                value={service.days}
+                                                                onChange={(e) => updateService(service.id, 'days', e.target.value)}
+                                                            />
+                                                        </div>
+                                                        {service.dailyRate && service.days && (
+                                                            <div className="col-span-2 text-center p-2 bg-blue-50 rounded">
+                                                                <span className="text-sm font-semibold text-blue-700">
+                                                                    Total: ${(parseFloat(service.dailyRate) * parseInt(service.days)).toLocaleString()}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right Column - Results */}
+                            <div>
+                                {calculation && calculation.services.length > 0 ? (
+                                    <div className="space-y-6">
+                                        {/* Main Result */}
+                                        <div className="bg-blue-600 text-white rounded-lg shadow p-6">
+                                            <h3 className="text-lg font-semibold mb-4">Client Responsibility</h3>
+                                            <div className="text-center">
+                                                <div className="text-4xl font-bold mb-2">
+                                                    ${calculation.totalClientCost.toLocaleString()}
+                                                </div>
+                                                <p className="text-blue-100">Total amount client will pay</p>
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-2 gap-4 mt-6">
+                                                <div className="bg-white/20 rounded p-3">
+                                                    <div className="text-sm text-blue-100">Insurance Pays</div>
+                                                    <div className="text-xl font-semibold">${calculation.insurancePays.toLocaleString()}</div>
+                                                </div>
+                                                <div className="bg-white/20 rounded p-3">
+                                                    <div className="text-sm text-blue-100">Total Charges</div>
+                                                    <div className="text-xl font-semibold">${calculation.totalCharges.toLocaleString()}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Breakdown */}
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <h3 className="text-lg font-semibold mb-4">Cost Breakdown</h3>
+                                            
+                                            {/* Services */}
+                                            <div className="mb-6">
+                                                <h4 className="text-sm font-medium text-gray-700 mb-2">Selected Services</h4>
+                                                {calculation.services.map((service, idx) => (
+                                                    <div key={idx} className="flex justify-between py-2 border-b">
+                                                        <span className="text-sm">{service.fullName} ({service.days} days)</span>
+                                                        <span className="font-medium">${service.totalCost.toLocaleString()}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* Calculations */}
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between py-2">
+                                                    <span className="text-sm">Total Provider Charges</span>
+                                                    <span className="font-medium">${calculation.totalCharges.toLocaleString()}</span>
+                                                </div>
+                                                
+                                                {!benefits.isInNetwork && (
+                                                    <div className="flex justify-between py-2">
+                                                        <span className="text-sm">Allowed Amount (Out-of-Network)</span>
+                                                        <span className="font-medium">${calculation.allowedAmount.toLocaleString()}</span>
+                                                    </div>
+                                                )}
+                                                
+                                                <div className="flex justify-between py-2 border-t pt-3">
+                                                    <span className="text-sm">Deductible Applied</span>
+                                                    <span className="font-medium text-red-600">-${calculation.deductibleResponsibility.toLocaleString()}</span>
+                                                </div>
+                                                
+                                                <div className="flex justify-between py-2">
+                                                    <span className="text-sm">
+                                                        Coinsurance ({calculation.coinsurancePercentage}% patient / {calculation.insuranceCoinsurancePercentage}% insurance)
+                                                    </span>
+                                                    <span className="font-medium text-red-600">-${calculation.coinsuranceResponsibility.toLocaleString()}</span>
+                                                </div>
+                                                
+                                                {calculation.balanceBilling > 0 && (
+                                                    <div className="flex justify-between py-2">
+                                                        <span className="text-sm">Balance Billing (Out-of-Network)</span>
+                                                        <span className="font-medium text-red-600">-${calculation.balanceBilling.toLocaleString()}</span>
+                                                    </div>
+                                                )}
+                                                
+                                                {calculation.oopMaxReached && (
+                                                    <div className="bg-green-50 p-3 rounded my-2">
+                                                        <p className="text-sm text-green-700 font-medium">
+                                                            ✓ Out-of-Pocket Maximum Reached - Responsibility capped
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                
+                                                <div className="flex justify-between py-3 border-t font-semibold">
+                                                    <span>Total Client Responsibility</span>
+                                                    <span className="text-lg text-blue-600">${calculation.totalClientCost.toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Payment Options */}
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <h3 className="text-lg font-semibold mb-4">Payment Collection Options</h3>
+                                            
+                                            <div className="space-y-4">
+                                                {/* Option 1 */}
+                                                <div className="border-2 border-gray-200 rounded-lg p-4">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <span className="text-sm font-semibold text-gray-600">Option 1</span>
+                                                            <h4 className="font-semibold">Pay Remaining Deductible</h4>
+                                                        </div>
+                                                        <div className="text-2xl font-bold">
+                                                            ${Math.min(calculation.remainingDeductible, calculation.remainingOOP).toLocaleString()}
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 mt-2">
+                                                        Satisfies deductible requirement. After this, patient pays only {benefits.coinsurance}% coinsurance.
+                                                    </p>
+                                                </div>
+
+                                                {/* Option 2 */}
+                                                <div className="border-2 border-blue-200 bg-blue-50 rounded-lg p-4">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <span className="text-sm font-semibold text-blue-600">Option 2</span>
+                                                            <h4 className="font-semibold">Pay Half OOP Remaining</h4>
+                                                        </div>
+                                                        <div className="text-2xl font-bold text-blue-700">
+                                                            ${(calculation.remainingOOP * 0.5).toLocaleString()}
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 mt-2">
+                                                        Prepays 50% toward annual maximum. Reduces future collection needs.
+                                                    </p>
+                                                </div>
+
+                                                {/* Option 3 */}
+                                                <div className="border-2 border-green-200 rounded-lg p-4">
+                                                    <div className="flex justify-between items-start">
+                                                        <div>
+                                                            <span className="text-sm font-semibold text-green-600">Option 3</span>
+                                                            <h4 className="font-semibold">Pay Full OOP Maximum</h4>
+                                                        </div>
+                                                        <div className="text-2xl font-bold text-green-700">
+                                                            ${calculation.remainingOOP.toLocaleString()}
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-sm text-gray-600 mt-2">
+                                                        Insurance pays 100% for covered services rest of year. Best value for ongoing treatment.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Benefits Progress */}
+                                        <div className="bg-white rounded-lg shadow p-6">
+                                            <h3 className="text-lg font-semibold mb-4">Benefits Progress</h3>
+                                            
+                                            <div className="space-y-4">
+                                                <div>
+                                                    <div className="flex justify-between text-sm mb-1">
+                                                        <span>Deductible</span>
+                                                        <span>${benefits.deductibleMet || 0} / ${benefits.deductible || 0}</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                                        <div 
+                                                            className="bg-blue-600 h-2 rounded-full transition-all"
+                                                            style={{width: `${Math.min(100, ((parseFloat(benefits.deductibleMet) || 0) / (parseFloat(benefits.deductible) || 1)) * 100)}%`}}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                
+                                                <div>
+                                                    <div className="flex justify-between text-sm mb-1">
+                                                        <span>Out-of-Pocket Maximum</span>
+                                                        <span>${benefits.oopMet || 0} / ${benefits.oopMax || 0}</span>
+                                                    </div>
+                                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                                        <div 
+                                                            className="bg-green-600 h-2 rounded-full transition-all"
+                                                            style={{width: `${Math.min(100, ((parseFloat(benefits.oopMet) || 0) / (parseFloat(benefits.oopMax) || 1)) * 100)}%`}}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="bg-white rounded-lg shadow p-12 text-center">
+                                        <svg className="w-16 h-16 mx-auto text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                        </svg>
+                                        <h3 className="text-lg font-medium text-gray-800 mb-2">No Calculation Yet</h3>
+                                        <p className="text-gray-600">Enter benefits and select services to calculate</p>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Payment Options -->
-                <div class="space-y-4">
-                    <h4 class="font-semibold text-gray-800">Payment Collection Options</h4>
-                    
-                    <div class="border rounded-lg p-4">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="font-medium">Option 1 - Deductible Only</div>
-                                <div class="text-sm text-gray-600">Pay deductible portion</div>
-                            </div>
-                            <div class="text-xl font-bold">$${calc.deductibleApplied.toLocaleString()}</div>
-                        </div>
-                    </div>
-
-                    <div class="border-2 border-blue-200 bg-blue-50 rounded-lg p-4">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="font-medium">Option 2 - 50% Responsibility</div>
-                                <div class="text-sm text-gray-600">Pay half of total responsibility</div>
-                            </div>
-                            <div class="text-xl font-bold text-blue-700">$${(calc.clientCost * 0.5).toLocaleString()}</div>
-                        </div>
-                    </div>
-
-                    <div class="border rounded-lg p-4">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="font-medium">Option 3 - Full Payment</div>
-                                <div class="text-sm text-gray-600">Pay complete responsibility</div>
-                            </div>
-                            <div class="text-xl font-bold text-green-700">$${calc.clientCost.toLocaleString()}</div>
-                        </div>
-                    </div>
-
-                    <div class="border border-purple-200 bg-purple-50 rounded-lg p-4">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="font-medium">Option 4 - Minimum Payment</div>
-                                <div class="text-sm text-gray-600">Hardship minimum</div>
-                            </div>
-                            <div class="text-xl font-bold text-purple-700">$1,000</div>
-                        </div>
-                    </div>
-
-                    <div class="border border-red-200 bg-red-50 rounded-lg p-4">
-                        <div class="flex justify-between items-center">
-                            <div>
-                                <div class="font-medium">Option 5 - Emergency</div>
-                                <div class="text-sm text-red-600">⚠️ Collect nothing upfront</div>
-                            </div>
-                            <div class="text-xl font-bold text-red-700">$0</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Breakdown -->
-                <div class="mt-6 p-4 bg-gray-50 rounded">
-                    <h5 class="font-medium mb-2">Cost Breakdown</h5>
-                    <div class="space-y-1 text-sm">
-                        <div class="flex justify-between">
-                            <span>Total Provider Charges:</span>
-                            <span>$${calc.totalCharges.toLocaleString()}</span>
-                        </div>
-                        <div class="flex justify-between text-red-600">
-                            <span>Client Responsibility:</span>
-                            <span>-$${calc.clientCost.toLocaleString()}</span>
-                        </div>
-                        <div class="flex justify-between text-green-600 font-medium border-t pt-1">
-                            <span>Insurance Pays:</span>
-                            <span>$${calc.insurancePays.toLocaleString()}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
+            );
         }
 
-        // Show no results message
-        function showNoResults() {
-            document.getElementById('results').innerHTML = `
-                <h3 class="text-lg font-semibold text-gray-800 mb-4">Results</h3>
-                <div class="text-center py-8 text-gray-500">
-                    <div class="text-4xl mb-2">📊</div>
-                    <p>Select services and enter benefit information to see calculations</p>
-                </div>
-            `;
-        }
-
-        // Reset everything
-        function resetAll() {
-            // Reset benefit inputs
-            document.getElementById('deductible').value = '';
-            document.getElementById('deductibleMet').value = '';
-            document.getElementById('oopMax').value = '';
-            document.getElementById('oopMet').value = '';
-            document.getElementById('coinsurance').value = '';
-            document.getElementById('insurance').value = '';
-
-            // Reset all services
-            ['detox', 'residential', 'php', 'iop'].forEach(service => {
-                const checkbox = document.getElementById(service + '-check');
-                const inputs = document.getElementById(service + '-inputs');
-                const card = document.getElementById(service + '-card');
-
-                checkbox.checked = false;
-                inputs.classList.add('hidden');
-                inputs.classList.remove('grid');
-                card.classList.remove('service-selected');
-            });
-
-            showNoResults();
-        }
-
-        // Initialize
-        showNoResults();
+        // Render the app
+        ReactDOM.render(<InsuranceBenefitsCalculator />, document.getElementById('root'));
     </script>
 </body>
 </html>
