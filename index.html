@@ -107,8 +107,8 @@
                 let runningOOPUsed = 0;
                 let runningRemainingDeductible = remainingDeductible;
                 let runningRemainingOOP = remainingOOP;
-                let oopMaxReachedDay = null;
-                let cumulativeDays = 0;
+                let totalClientResponsibilityPaid = 0;
+                let daysToPayOffResponsibility = 0;
 
                 // Calculate per-service breakdown
                 const servicesWithBreakdown = serviceDetails.map(service => {
@@ -125,22 +125,9 @@
                     // Total theoretical responsibility for this service
                     const serviceTheoreticalResponsibility = serviceDeductible + serviceCoinsurance;
                     
-                    // Check if OOP max will be reached during this service
-                    const prevRunningOOP = runningRemainingOOP;
-                    
                     // Apply OOP max
                     const serviceActualResponsibility = Math.min(serviceTheoreticalResponsibility, runningRemainingOOP);
                     runningRemainingOOP -= serviceActualResponsibility;
-                    
-                    // Track when OOP max is reached
-                    if (prevRunningOOP > 0 && runningRemainingOOP === 0 && !oopMaxReachedDay) {
-                        // Calculate on which day of this service OOP max is reached
-                        const dailyResponsibility = serviceActualResponsibility / parseInt(service.days);
-                        const daysToReachOOP = Math.ceil(prevRunningOOP / dailyResponsibility);
-                        oopMaxReachedDay = cumulativeDays + daysToReachOOP;
-                    }
-                    
-                    cumulativeDays += parseInt(service.days);
                     
                     // Balance billing for this service
                     const serviceBalanceBilling = !benefits.isInNetwork ? service.totalCost - serviceAllowed : 0;
@@ -151,6 +138,9 @@
                     // Daily rates
                     const clientDailyRate = (serviceActualResponsibility + serviceBalanceBilling) / parseInt(service.days);
                     const insuranceDailyRate = serviceInsurancePays / parseInt(service.days);
+                    
+                    // Track total client responsibility
+                    totalClientResponsibilityPaid += serviceActualResponsibility + serviceBalanceBilling;
                     
                     return {
                         ...service,
@@ -179,6 +169,34 @@
                     coinsurance
                 );
 
+                // Calculate days until client responsibility is met
+                const calculateDaysToPayResponsibility = (services, totalClientCost) => {
+                    if (totalClientCost <= 0) return { totalDays: 0, breakdown: [] };
+                    
+                    // Calculate weighted average daily rate
+                    const totalDays = services.reduce((sum, s) => sum + parseInt(s.days), 0);
+                    const weightedDailyRate = services.reduce((sum, s) => sum + (s.clientDailyRate * parseInt(s.days)), 0) / totalDays;
+                    
+                    // Calculate days needed
+                    const daysNeeded = Math.ceil(totalClientCost / weightedDailyRate);
+                    
+                    // Create breakdown by service type
+                    const breakdown = services.map(service => ({
+                        name: service.fullName,
+                        dailyRate: service.clientDailyRate,
+                        daysToPayOff: Math.ceil(totalClientCost / service.clientDailyRate),
+                        percentOfTotal: ((service.clientResponsibility / totalClientCost) * 100).toFixed(1)
+                    }));
+                    
+                    return {
+                        totalDays: daysNeeded,
+                        weightedDailyRate,
+                        breakdown
+                    };
+                };
+
+                const daysToPayResponsibility = calculateDaysToPayResponsibility(servicesWithBreakdown, totalClientCost);
+
                 setCalculation({
                     services: servicesWithBreakdown,
                     totalCharges,
@@ -191,10 +209,10 @@
                     remainingDeductible: Math.max(0, remainingDeductible - totalDeductibleUsed),
                     remainingOOP: Math.max(0, remainingOOP - (totalDeductibleUsed + totalCoinsuranceUsed)),
                     oopMaxReached: runningRemainingOOP === 0 && remainingOOP > 0,
-                    oopMaxReachedDay,
                     coinsurancePercentage: coinsurance,
                     insuranceCoinsurancePercentage: 100 - coinsurance,
                     daysToFullCoverage,
+                    daysToPayResponsibility,
                     hasDeductible: deductible > 0
                 });
             };
@@ -446,19 +464,21 @@
                                                 </div>
                                                 <p className="text-blue-100">Total amount client will pay</p>
                                                 
-                                                {calculation.oopMaxReached && calculation.oopMaxReachedDay && (
-                                                    <div className="mt-3 p-2 bg-white/20 rounded text-sm">
-                                                        OOP Max reached on day {calculation.oopMaxReachedDay}
+                                                {calculation.daysToPayResponsibility && calculation.daysToPayResponsibility.totalDays > 0 && (
+                                                    <div className="mt-4 p-3 bg-white/20 rounded">
+                                                        <p className="text-sm font-medium">
+                                                            Days to pay off responsibility: {calculation.daysToPayResponsibility.totalDays} days
+                                                        </p>
+                                                        <p className="text-xs text-blue-100 mt-1">
+                                                            Based on weighted average daily rate: ${calculation.daysToPayResponsibility.weightedDailyRate.toFixed(2)}/day
+                                                        </p>
                                                     </div>
                                                 )}
                                                 
                                                 {calculation.daysToFullCoverage > 0 && (
-                                                    <div className="mt-4 p-3 bg-white/20 rounded">
-                                                        <p className="text-sm font-medium">
+                                                    <div className="mt-3 p-3 bg-white/10 rounded">
+                                                        <p className="text-xs text-blue-100">
                                                             Days until 100% insurance coverage: {calculation.daysToFullCoverage} days
-                                                        </p>
-                                                        <p className="text-xs text-blue-100 mt-1">
-                                                            (When out-of-pocket maximum is reached)
                                                         </p>
                                                     </div>
                                                 )}
@@ -651,11 +671,6 @@
                                                     <div className="bg-green-50 p-3 rounded my-2">
                                                         <p className="text-sm text-green-700 font-medium">
                                                             ✓ Out-of-Pocket Maximum Reached - Responsibility capped
-                                                            {calculation.oopMaxReachedDay && (
-                                                                <span className="block text-xs mt-1">
-                                                                    OOP Max reached after day {calculation.oopMaxReachedDay} of treatment
-                                                                </span>
-                                                            )}
                                                         </p>
                                                     </div>
                                                 )}
@@ -789,6 +804,48 @@
                                                     <p className="text-xs text-green-600 mt-1">
                                                         Based on average daily rates of selected services
                                                     </p>
+                                                </div>
+                                            )}
+                                            
+                                            {/* Days to Pay Responsibility Breakdown */}
+                                            {calculation.daysToPayResponsibility && calculation.daysToPayResponsibility.breakdown.length > 0 && (
+                                                <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                                                    <h4 className="text-sm font-semibold text-blue-800 mb-3">Days to Pay Off Total Responsibility</h4>
+                                                    
+                                                    <div className="bg-white p-3 rounded mb-3">
+                                                        <div className="text-center">
+                                                            <div className="text-2xl font-bold text-blue-700">
+                                                                {calculation.daysToPayResponsibility.totalDays} days
+                                                            </div>
+                                                            <div className="text-xs text-gray-600">
+                                                                Based on weighted average: ${calculation.daysToPayResponsibility.weightedDailyRate.toFixed(2)}/day
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="space-y-2">
+                                                        <div className="text-xs font-medium text-gray-700 mb-2">Breakdown by Service Type:</div>
+                                                        {calculation.daysToPayResponsibility.breakdown.map((service, idx) => (
+                                                            <div key={idx} className="bg-gray-50 p-2 rounded text-xs">
+                                                                <div className="flex justify-between items-start">
+                                                                    <div>
+                                                                        <div className="font-medium">{service.name}</div>
+                                                                        <div className="text-gray-600">
+                                                                            ${calculation.totalClientCost.toFixed(2)} ÷ ${service.dailyRate.toFixed(2)}/day
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="text-right">
+                                                                        <div className="font-bold">{service.daysToPayOff} days</div>
+                                                                        <div className="text-gray-600">{service.percentOfTotal}% of total</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    
+                                                    <div className="mt-3 p-2 bg-blue-100 rounded text-xs text-blue-700">
+                                                        <strong>Note:</strong> This shows how many days of each service type would be needed to pay the total ${calculation.totalClientCost.toFixed(2)} responsibility.
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
