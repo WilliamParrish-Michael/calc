@@ -50,29 +50,29 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Annual Deductible ($)</label>
-                                    <input type="number" id="deductible" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="5000">
+                                    <input type="number" id="deductible" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="5000" onchange="calculate()" oninput="calculate()">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Deductible Met ($)</label>
-                                    <input type="number" id="deductibleMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="1500">
+                                    <input type="number" id="deductibleMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="1500" onchange="calculate()" oninput="calculate()">
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Out-of-Pocket Max ($)</label>
-                                    <input type="number" id="oopMax" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="8000">
+                                    <input type="number" id="oopMax" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="8000" onchange="calculate()" oninput="calculate()">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">OOP Met ($)</label>
-                                    <input type="number" id="oopMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="2000">
+                                    <input type="number" id="oopMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="2000" onchange="calculate()" oninput="calculate()">
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Coinsurance (%)</label>
-                                    <input type="number" id="coinsurance" min="0" max="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="20">
+                                    <input type="number" id="coinsurance" min="0" max="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="20" onchange="updateInsurancePortion(); calculate()" oninput="updateInsurancePortion(); calculate()">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Insurance Portion (%)</label>
@@ -93,88 +93,88 @@
 
                         <div class="space-y-3">
                             <!-- Detox -->
-                            <div class="border rounded-lg p-4 service-card cursor-pointer" id="detox-card" onclick="toggleService('detox')">
-                                <div class="flex items-start">
-                                    <input type="checkbox" id="detox-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" readonly>
+                            <div class="border rounded-lg p-4 service-card" id="detox-card">
+                                <label class="flex items-start cursor-pointer" onclick="toggleService('detox')">
+                                    <input type="checkbox" id="detox-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" onclick="handleCheckboxClick(event, 'detox')">
                                     <div class="ml-3 flex-1">
                                         <div class="font-medium text-gray-800">Medical Detoxification</div>
                                         <div class="text-sm text-gray-600">Medically supervised withdrawal management</div>
                                     </div>
-                                </div>
+                                </label>
                                 <div class="ml-7 mt-3 grid grid-cols-2 gap-3" id="detox-inputs" style="display: none;">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                        <input type="number" id="detox-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="2600">
+                                        <input type="number" id="detox-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="2600" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Number of Days</label>
-                                        <input type="number" id="detox-days" min="1" value="7" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                                        <input type="number" id="detox-days" min="1" value="7" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div class="col-span-2 space-y-2" id="detox-totals"></div>
                                 </div>
                             </div>
 
                             <!-- Residential -->
-                            <div class="border rounded-lg p-4 service-card cursor-pointer" id="residential-card" onclick="toggleService('residential')">
-                                <div class="flex items-start">
-                                    <input type="checkbox" id="residential-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" readonly>
+                            <div class="border rounded-lg p-4 service-card" id="residential-card">
+                                <label class="flex items-start cursor-pointer" onclick="toggleService('residential')">
+                                    <input type="checkbox" id="residential-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" onclick="handleCheckboxClick(event, 'residential')">
                                     <div class="ml-3 flex-1">
                                         <div class="font-medium text-gray-800">Residential Treatment Center</div>
                                         <div class="text-sm text-gray-600">Inpatient residential treatment program</div>
                                     </div>
-                                </div>
+                                </label>
                                 <div class="ml-7 mt-3 grid grid-cols-2 gap-3" id="residential-inputs" style="display: none;">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                        <input type="number" id="residential-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="2000">
+                                        <input type="number" id="residential-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="2000" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Number of Days</label>
-                                        <input type="number" id="residential-days" min="1" value="21" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                                        <input type="number" id="residential-days" min="1" value="21" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div class="col-span-2 space-y-2" id="residential-totals"></div>
                                 </div>
                             </div>
 
                             <!-- PHP -->
-                            <div class="border rounded-lg p-4 service-card cursor-pointer" id="php-card" onclick="toggleService('php')">
-                                <div class="flex items-start">
-                                    <input type="checkbox" id="php-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" readonly>
+                            <div class="border rounded-lg p-4 service-card" id="php-card">
+                                <label class="flex items-start cursor-pointer" onclick="toggleService('php')">
+                                    <input type="checkbox" id="php-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" onclick="handleCheckboxClick(event, 'php')">
                                     <div class="ml-3 flex-1">
                                         <div class="font-medium text-gray-800">Partial Hospitalization Program</div>
                                         <div class="text-sm text-gray-600">Intensive day treatment program</div>
                                     </div>
-                                </div>
+                                </label>
                                 <div class="ml-7 mt-3 grid grid-cols-2 gap-3" id="php-inputs" style="display: none;">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                        <input type="number" id="php-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="400">
+                                        <input type="number" id="php-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="400" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Number of Days</label>
-                                        <input type="number" id="php-days" min="1" value="30" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                                        <input type="number" id="php-days" min="1" value="30" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div class="col-span-2 space-y-2" id="php-totals"></div>
                                 </div>
                             </div>
 
                             <!-- IOP -->
-                            <div class="border rounded-lg p-4 service-card cursor-pointer" id="iop-card" onclick="toggleService('iop')">
-                                <div class="flex items-start">
-                                    <input type="checkbox" id="iop-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" readonly>
+                            <div class="border rounded-lg p-4 service-card" id="iop-card">
+                                <label class="flex items-start cursor-pointer" onclick="toggleService('iop')">
+                                    <input type="checkbox" id="iop-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" onclick="handleCheckboxClick(event, 'iop')">
                                     <div class="ml-3 flex-1">
                                         <div class="font-medium text-gray-800">Intensive Outpatient Program</div>
                                         <div class="text-sm text-gray-600">Structured outpatient treatment</div>
                                     </div>
-                                </div>
+                                </label>
                                 <div class="ml-7 mt-3 grid grid-cols-2 gap-3" id="iop-inputs" style="display: none;">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                        <input type="number" id="iop-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="200">
+                                        <input type="number" id="iop-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="200" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Number of Days</label>
-                                        <input type="number" id="iop-days" min="1" value="30" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                                        <input type="number" id="iop-days" min="1" value="30" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div class="col-span-2 space-y-2" id="iop-totals"></div>
                                 </div>
@@ -407,44 +407,7 @@
             showResults(calculation);
         }
 
-        function calculateOOPMaxDay(calc) {
-            const deductible = parseFloat(document.getElementById('deductible').value) || 0;
-            const deductibleMet = parseFloat(document.getElementById('deductibleMet').value) || 0;
-            const oopMax = parseFloat(document.getElementById('oopMax').value) || 0;
-            const oopMet = parseFloat(document.getElementById('oopMet').value) || 0;
-            const coinsurance = parseFloat(document.getElementById('coinsurance').value) || 0;
-            
-            const remainingOOP = Math.max(0, oopMax - oopMet);
-            let remainingDeductible = Math.max(0, deductible - deductibleMet);
-            let cumulativeClientCost = 0;
-            let currentDay = 0;
-            
-            // Go through each service day by day
-            for (let service of calc.services) {
-                for (let day = 1; day <= service.days; day++) {
-                    currentDay++;
-                    let dailyClientCost;
-                    
-                    if (remainingDeductible > 0) {
-                        // During deductible phase - client pays 100%
-                        dailyClientCost = service.rate;
-                        remainingDeductible = Math.max(0, remainingDeductible - service.rate);
-                    } else {
-                        // During coinsurance phase - client pays percentage
-                        dailyClientCost = service.rate * (coinsurance / 100);
-                    }
-                    
-                    cumulativeClientCost += dailyClientCost;
-                    
-                    // Check if we've hit the OOP max
-                    if (cumulativeClientCost >= remainingOOP) {
-                        return currentDay;
-                    }
-                }
-            }
-            
-            return currentDay; // If somehow we get here
-        }
+        function generateDaysTo100Coverage(calc) {
             const deductible = parseFloat(document.getElementById('deductible').value) || 0;
             const deductibleMet = parseFloat(document.getElementById('deductibleMet').value) || 0;
             const oopMax = parseFloat(document.getElementById('oopMax').value) || 0;
@@ -670,7 +633,6 @@
 
         function showResults(calc) {
             const coinsurance = parseFloat(document.getElementById('coinsurance').value) || 0;
-            const oopMaxDay = calc.oopMaxReached ? calculateOOPMaxDay(calc) : null;
             
             document.getElementById('results-section').innerHTML = `
                 <div class="space-y-6">
@@ -689,7 +651,7 @@
                         <div class="text-center mb-6">
                             <div class="text-5xl font-bold mb-2">$${formatNumber(calc.totalClientCost)}</div>
                             <p class="text-blue-100">Total amount client will pay</p>
-                            ${calc.oopMaxReached ? `<div class="mt-3 bg-white/20 rounded-lg px-4 py-2 text-sm"><span class="font-semibold">✓ OOP Max Reached</span> - Capped at remaining maximum<br><span class="text-blue-200">Reached on day ${oopMaxDay} of treatment</span></div>` : ''}
+                            ${calc.oopMaxReached ? '<div class="mt-3 bg-white/20 rounded-lg px-4 py-2 text-sm"><span class="font-semibold">✓ OOP Max Reached</span> - Capped at remaining maximum</div>' : ''}
                         </div>
                         <div class="grid grid-cols-2 gap-4 text-sm">
                             <div class="bg-white/10 rounded p-3">
@@ -871,74 +833,14 @@
             showNoCalculation();
         }
 
-        // Setup event listeners
-        function setupEventListeners() {
-            // Coinsurance input events
-            const coinsuranceInput = document.getElementById('coinsurance');
-            if (coinsuranceInput) {
-                coinsuranceInput.addEventListener('input', function() {
-                    updateInsurancePortion();
-                    calculate();
-                });
-                coinsuranceInput.addEventListener('change', function() {
-                    updateInsurancePortion();
-                    calculate();
-                });
-                coinsuranceInput.addEventListener('keyup', function() {
-                    updateInsurancePortion();
-                    calculate();
-                });
-            }
-
-            // All other benefit inputs
-            const benefitInputs = ['deductible', 'deductibleMet', 'oopMax', 'oopMet'];
-            benefitInputs.forEach(inputId => {
-                const input = document.getElementById(inputId);
-                if (input) {
-                    input.addEventListener('input', calculate);
-                    input.addEventListener('change', calculate);
-                }
-            });
-
-            // Service inputs
-            const serviceTypes = ['detox', 'residential', 'php', 'iop'];
-            serviceTypes.forEach(service => {
-                const rateInput = document.getElementById(service + '-rate');
-                const daysInput = document.getElementById(service + '-days');
-                
-                if (rateInput) {
-                    rateInput.addEventListener('input', calculate);
-                    rateInput.addEventListener('change', calculate);
-                    rateInput.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                    });
-                }
-                
-                if (daysInput) {
-                    daysInput.addEventListener('input', calculate);
-                    daysInput.addEventListener('change', calculate);
-                    daysInput.addEventListener('click', function(e) {
-                        e.stopPropagation();
-                    });
-                }
-            });
-        }
-
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, setting up...');
-            setupEventListeners();
             showNoCalculation();
             updateInsurancePortion();
         });
         
         // Fallback initialization
-        setTimeout(() => {
-            console.log('Fallback initialization...');
-            setupEventListeners();
-            showNoCalculation();
-            updateInsurancePortion();
-        }, 100);
+        showNoCalculation();
     </script>
 </body>
 </html> + formatNumber(remainingDeductible) : 'Satisfied'}</div>
