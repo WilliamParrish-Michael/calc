@@ -50,29 +50,29 @@
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Annual Deductible ($)</label>
-                                    <input type="number" id="deductible" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="5000" onchange="calculate()">
+                                    <input type="number" id="deductible" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="5000" onchange="calculate()" oninput="calculate()">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Deductible Met ($)</label>
-                                    <input type="number" id="deductibleMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="1500" onchange="calculate()">
+                                    <input type="number" id="deductibleMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="1500" onchange="calculate()" oninput="calculate()">
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Out-of-Pocket Max ($)</label>
-                                    <input type="number" id="oopMax" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="8000" onchange="calculate()">
+                                    <input type="number" id="oopMax" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="8000" onchange="calculate()" oninput="calculate()">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">OOP Met ($)</label>
-                                    <input type="number" id="oopMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="2000" onchange="calculate()">
+                                    <input type="number" id="oopMet" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="2000" onchange="calculate()" oninput="calculate()">
                                 </div>
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Coinsurance (%)</label>
-                                    <input type="number" id="coinsurance" min="0" max="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="20" onchange="updateInsurancePortion(); calculate()">
+                                    <input type="number" id="coinsurance" min="0" max="100" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="20" onchange="updateInsurancePortion(); calculate()" oninput="updateInsurancePortion(); calculate()">
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-1">Insurance Portion (%)</label>
@@ -95,7 +95,7 @@
                             <!-- Detox -->
                             <div class="border rounded-lg p-4 service-card" id="detox-card">
                                 <label class="flex items-start cursor-pointer" onclick="toggleService('detox')">
-                                    <input type="checkbox" id="detox-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1">
+                                    <input type="checkbox" id="detox-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" onclick="handleCheckboxClick(event, 'detox')">
                                     <div class="ml-3 flex-1">
                                         <div class="font-medium text-gray-800">Medical Detoxification</div>
                                         <div class="text-sm text-gray-600">Medically supervised withdrawal management</div>
@@ -104,11 +104,11 @@
                                 <div class="ml-7 mt-3 grid grid-cols-2 gap-3" id="detox-inputs" style="display: none;">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                        <input type="number" id="detox-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="2600" onchange="calculate()">
+                                        <input type="number" id="detox-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="2600" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Number of Days</label>
-                                        <input type="number" id="detox-days" min="1" value="7" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()">
+                                        <input type="number" id="detox-days" min="1" value="7" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div class="col-span-2 space-y-2" id="detox-totals"></div>
                                 </div>
@@ -117,7 +117,7 @@
                             <!-- Residential -->
                             <div class="border rounded-lg p-4 service-card" id="residential-card">
                                 <label class="flex items-start cursor-pointer" onclick="toggleService('residential')">
-                                    <input type="checkbox" id="residential-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1">
+                                    <input type="checkbox" id="residential-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" onclick="handleCheckboxClick(event, 'residential')">
                                     <div class="ml-3 flex-1">
                                         <div class="font-medium text-gray-800">Residential Treatment Center</div>
                                         <div class="text-sm text-gray-600">Inpatient residential treatment program</div>
@@ -126,11 +126,11 @@
                                 <div class="ml-7 mt-3 grid grid-cols-2 gap-3" id="residential-inputs" style="display: none;">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                        <input type="number" id="residential-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="2000" onchange="calculate()">
+                                        <input type="number" id="residential-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="2000" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Number of Days</label>
-                                        <input type="number" id="residential-days" min="1" value="21" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()">
+                                        <input type="number" id="residential-days" min="1" value="21" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div class="col-span-2 space-y-2" id="residential-totals"></div>
                                 </div>
@@ -139,7 +139,7 @@
                             <!-- PHP -->
                             <div class="border rounded-lg p-4 service-card" id="php-card">
                                 <label class="flex items-start cursor-pointer" onclick="toggleService('php')">
-                                    <input type="checkbox" id="php-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1">
+                                    <input type="checkbox" id="php-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" onclick="handleCheckboxClick(event, 'php')">
                                     <div class="ml-3 flex-1">
                                         <div class="font-medium text-gray-800">Partial Hospitalization Program</div>
                                         <div class="text-sm text-gray-600">Intensive day treatment program</div>
@@ -148,11 +148,11 @@
                                 <div class="ml-7 mt-3 grid grid-cols-2 gap-3" id="php-inputs" style="display: none;">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                        <input type="number" id="php-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="400" onchange="calculate()">
+                                        <input type="number" id="php-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="400" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Number of Days</label>
-                                        <input type="number" id="php-days" min="1" value="30" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()">
+                                        <input type="number" id="php-days" min="1" value="30" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div class="col-span-2 space-y-2" id="php-totals"></div>
                                 </div>
@@ -161,7 +161,7 @@
                             <!-- IOP -->
                             <div class="border rounded-lg p-4 service-card" id="iop-card">
                                 <label class="flex items-start cursor-pointer" onclick="toggleService('iop')">
-                                    <input type="checkbox" id="iop-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1">
+                                    <input type="checkbox" id="iop-checkbox" class="h-4 w-4 text-blue-600 rounded mt-1" onclick="handleCheckboxClick(event, 'iop')">
                                     <div class="ml-3 flex-1">
                                         <div class="font-medium text-gray-800">Intensive Outpatient Program</div>
                                         <div class="text-sm text-gray-600">Structured outpatient treatment</div>
@@ -170,11 +170,11 @@
                                 <div class="ml-7 mt-3 grid grid-cols-2 gap-3" id="iop-inputs" style="display: none;">
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Daily Rate ($)</label>
-                                        <input type="number" id="iop-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="200" onchange="calculate()">
+                                        <input type="number" id="iop-rate" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" placeholder="200" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-gray-700 mb-1">Number of Days</label>
-                                        <input type="number" id="iop-days" min="1" value="30" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()">
+                                        <input type="number" id="iop-days" min="1" value="30" class="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm" onchange="calculate()" oninput="calculate()">
                                     </div>
                                     <div class="col-span-2 space-y-2" id="iop-totals"></div>
                                 </div>
@@ -217,8 +217,15 @@
         }
 
         function updateInsurancePortion() {
-            const coinsurance = parseFloat(document.getElementById('coinsurance').value) || 0;
-            const insurancePortion = coinsurance > 0 ? 100 - coinsurance : '';
+            const coinsuranceValue = document.getElementById('coinsurance').value;
+            const coinsurance = parseFloat(coinsuranceValue);
+            let insurancePortion = '';
+            
+            // Only calculate if there's a valid number entered
+            if (coinsuranceValue !== '' && !isNaN(coinsurance) && coinsurance >= 0 && coinsurance <= 100) {
+                insurancePortion = 100 - coinsurance;
+            }
+            
             document.getElementById('insurancePortion').value = insurancePortion;
         }
 
@@ -228,8 +235,10 @@
             const card = document.getElementById(service + '-card');
             const rateInput = document.getElementById(service + '-rate');
             
+            // Toggle the checkbox state
             checkbox.checked = !checkbox.checked;
             
+            // Update UI based on checkbox state
             if (checkbox.checked) {
                 inputs.style.display = 'grid';
                 card.classList.add('selected');
@@ -243,6 +252,33 @@
             }
             
             calculate();
+        }
+
+        function handleCheckboxClick(event, service) {
+            // Prevent the label click from firing when checkbox is clicked directly
+            event.stopPropagation();
+            // The checkbox state change will be handled by the browser
+            // We just need to update the UI and calculate
+            setTimeout(() => {
+                const checkbox = document.getElementById(service + '-checkbox');
+                const inputs = document.getElementById(service + '-inputs');
+                const card = document.getElementById(service + '-card');
+                const rateInput = document.getElementById(service + '-rate');
+                
+                if (checkbox.checked) {
+                    inputs.style.display = 'grid';
+                    card.classList.add('selected');
+                    // Auto-fill default rate if empty
+                    if (!rateInput.value) {
+                        rateInput.value = serviceDefaults[service].rate;
+                    }
+                } else {
+                    inputs.style.display = 'none';
+                    card.classList.remove('selected');
+                }
+                
+                calculate();
+            }, 0);
         }
 
         function setDefaultRates() {
@@ -798,6 +834,12 @@
         }
 
         // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            showNoCalculation();
+            updateInsurancePortion();
+        });
+        
+        // Fallback initialization
         showNoCalculation();
     </script>
 </body>
