@@ -107,6 +107,8 @@
                 let runningOOPUsed = 0;
                 let runningRemainingDeductible = remainingDeductible;
                 let runningRemainingOOP = remainingOOP;
+                let oopMaxReachedDay = null;
+                let cumulativeDays = 0;
 
                 // Calculate per-service breakdown
                 const servicesWithBreakdown = serviceDetails.map(service => {
@@ -123,9 +125,22 @@
                     // Total theoretical responsibility for this service
                     const serviceTheoreticalResponsibility = serviceDeductible + serviceCoinsurance;
                     
+                    // Check if OOP max will be reached during this service
+                    const prevRunningOOP = runningRemainingOOP;
+                    
                     // Apply OOP max
                     const serviceActualResponsibility = Math.min(serviceTheoreticalResponsibility, runningRemainingOOP);
                     runningRemainingOOP -= serviceActualResponsibility;
+                    
+                    // Track when OOP max is reached
+                    if (prevRunningOOP > 0 && runningRemainingOOP === 0 && !oopMaxReachedDay) {
+                        // Calculate on which day of this service OOP max is reached
+                        const dailyResponsibility = serviceActualResponsibility / parseInt(service.days);
+                        const daysToReachOOP = Math.ceil(prevRunningOOP / dailyResponsibility);
+                        oopMaxReachedDay = cumulativeDays + daysToReachOOP;
+                    }
+                    
+                    cumulativeDays += parseInt(service.days);
                     
                     // Balance billing for this service
                     const serviceBalanceBilling = !benefits.isInNetwork ? service.totalCost - serviceAllowed : 0;
@@ -176,6 +191,7 @@
                     remainingDeductible: Math.max(0, remainingDeductible - totalDeductibleUsed),
                     remainingOOP: Math.max(0, remainingOOP - (totalDeductibleUsed + totalCoinsuranceUsed)),
                     oopMaxReached: runningRemainingOOP === 0 && remainingOOP > 0,
+                    oopMaxReachedDay,
                     coinsurancePercentage: coinsurance,
                     insuranceCoinsurancePercentage: 100 - coinsurance,
                     daysToFullCoverage,
@@ -430,6 +446,12 @@
                                                 </div>
                                                 <p className="text-blue-100">Total amount client will pay</p>
                                                 
+                                                {calculation.oopMaxReached && calculation.oopMaxReachedDay && (
+                                                    <div className="mt-3 p-2 bg-white/20 rounded text-sm">
+                                                        OOP Max reached on day {calculation.oopMaxReachedDay}
+                                                    </div>
+                                                )}
+                                                
                                                 {calculation.daysToFullCoverage > 0 && (
                                                     <div className="mt-4 p-3 bg-white/20 rounded">
                                                         <p className="text-sm font-medium">
@@ -470,7 +492,7 @@
                                                             <div className="text-2xl font-bold text-red-700">
                                                                 ${Math.min(calculation.totalClientCost * 0.1, 500).toFixed(2)}
                                                             </div>
-                                                            <div className="text-xs text-red-600">10% or $500 (whichever is less)</div>
+                                                            <div className="text-xs text-red-600">10% of total or $500 (whichever is less)</div>
                                                         </div>
                                                     </div>
                                                     <p className="text-sm text-gray-600 mt-2">
@@ -479,22 +501,22 @@
                                                 </div>
 
                                                 {/* Option 2 - Deductible or Hardship */}
-                                                {calculation.hasDeductible && calculation.remainingDeductible > 0 ? (
+                                                {calculation.totalDeductibleUsed > 0 ? (
                                                     <div className="border-2 border-orange-200 rounded-lg p-4 bg-orange-50">
                                                         <div className="flex justify-between items-start">
                                                             <div>
                                                                 <span className="text-sm font-semibold text-orange-600">Option 2 - Deductible</span>
-                                                                <h4 className="font-semibold">Pay Remaining Deductible</h4>
+                                                                <h4 className="font-semibold">Pay Deductible Portion</h4>
                                                             </div>
                                                             <div className="text-right">
                                                                 <div className="text-2xl font-bold text-orange-700">
-                                                                    ${Math.min(calculation.remainingDeductible, calculation.totalClientCost).toFixed(2)}
+                                                                    ${calculation.totalDeductibleUsed.toFixed(2)}
                                                                 </div>
-                                                                <div className="text-xs text-orange-600">Satisfies deductible requirement</div>
+                                                                <div className="text-xs text-orange-600">Deductible applied to services</div>
                                                             </div>
                                                         </div>
                                                         <p className="text-sm text-gray-600 mt-2">
-                                                            After deductible is met, patient pays only {calculation.coinsurancePercentage}% coinsurance.
+                                                            Covers the deductible portion of these services. After deductible, patient pays only {calculation.coinsurancePercentage}% coinsurance.
                                                         </p>
                                                     </div>
                                                 ) : (
@@ -629,6 +651,11 @@
                                                     <div className="bg-green-50 p-3 rounded my-2">
                                                         <p className="text-sm text-green-700 font-medium">
                                                             ✓ Out-of-Pocket Maximum Reached - Responsibility capped
+                                                            {calculation.oopMaxReachedDay && (
+                                                                <span className="block text-xs mt-1">
+                                                                    OOP Max reached after day {calculation.oopMaxReachedDay} of treatment
+                                                                </span>
+                                                            )}
                                                         </p>
                                                     </div>
                                                 )}
