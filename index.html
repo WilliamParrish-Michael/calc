@@ -161,84 +161,15 @@
                 const totalCoinsuranceUsed = servicesWithBreakdown.reduce((sum, s) => sum + s.coinsuranceAmount, 0);
                 const totalBalanceBilling = servicesWithBreakdown.reduce((sum, s) => sum + s.balanceBilling, 0);
 
-                // Helper function to calculate days until 100% coverage
-                const calculateDaysToFullCoverage = (services, remainingOOP) => {
-                    if (remainingOOP <= 0 || services.length === 0) return 0;
-                    
-                    let totalDays = 0;
-                    let oopLeft = remainingOOP;
-                    
-                    // Process each service in order
-                    for (let i = 0; i < services.length; i++) {
-                        const service = services[i];
-                        const serviceDays = parseInt(service.days);
-                        
-                        // Check if this service's client responsibility fits in remaining OOP
-                        if (service.clientResponsibility <= oopLeft) {
-                            // Entire service fits
-                            totalDays += serviceDays;
-                            oopLeft -= service.clientResponsibility;
-                        } else {
-                            // OOP max reached during this service
-                            const daysNeeded = Math.ceil(oopLeft / service.clientDailyRate);
-                            totalDays += daysNeeded;
-                            return totalDays;
-                        }
-                    }
-                    
-                    // If still have OOP left after all selected services
-                    if (oopLeft > 0) {
-                        // Use average daily rate for estimation
-                        const avgDailyRate = services.reduce((sum, s) => sum + s.clientDailyRate, 0) / services.length;
-                        totalDays += Math.ceil(oopLeft / avgDailyRate);
-                    }
-                    
-                    return totalDays;
-                };
+                // Calculate days until 100% coverage
+                const daysToFullCoverage = calculateDaysToFullCoverage(
+                    servicesWithBreakdown,
+                    remainingOOP,
+                    remainingDeductible,
+                    coinsurance
+                );
 
-                // Calculate days until 100% coverage (OOP max reached)
-                const calculateDaysToFullCoverage = (servicesWithBreakdown, remainingOOP) => {
-                    if (remainingOOP <= 0) return 0;
-                    
-                    let totalDays = 0;
-                    let oopLeft = remainingOOP;
-                    
-                    // Go through services in order to see when OOP max is reached
-                    for (let i = 0; i < servicesWithBreakdown.length; i++) {
-                        const service = servicesWithBreakdown[i];
-                        const serviceDays = parseInt(service.days);
-                        const clientDailyRate = service.clientDailyRate;
-                        
-                        // How much of OOP will this service consume?
-                        const serviceClientTotal = service.clientResponsibility;
-                        
-                        if (oopLeft >= serviceClientTotal) {
-                            // This entire service fits within remaining OOP
-                            totalDays += serviceDays;
-                            oopLeft -= serviceClientTotal;
-                        } else {
-                            // OOP max will be reached during this service
-                            const daysUntilOOPMax = Math.ceil(oopLeft / clientDailyRate);
-                            totalDays += daysUntilOOPMax;
-                            oopLeft = 0;
-                            break;
-                        }
-                        
-                        if (oopLeft <= 0) break;
-                    }
-                    
-                    // If we've gone through all current services and still have OOP left,
-                    // estimate based on the average daily rate
-                    if (oopLeft > 0 && servicesWithBreakdown.length > 0) {
-                        const avgClientDaily = servicesWithBreakdown.reduce((sum, s) => sum + s.clientDailyRate, 0) / servicesWithBreakdown.length;
-                        const additionalDays = Math.ceil(oopLeft / avgClientDaily);
-                        totalDays += additionalDays;
-                    }
-                    
-                    return totalDays;
-                };
-
-                const daysToFullCoverage = calculateDaysToFullCoverage(servicesWithBreakdown, remainingOOP);
+                // Calculate days until client responsibility is met
                 const calculateDaysToPayResponsibility = (services, totalClientCost) => {
                     if (totalClientCost <= 0) return { totalDays: 0, breakdown: [] };
                     
@@ -284,6 +215,34 @@
                     daysToPayResponsibility,
                     hasDeductible: deductible > 0
                 });
+            };
+
+            // Calculate days until 100% coverage
+            const calculateDaysToFullCoverage = (services, remainingOOP, remainingDeductible, coinsurance) => {
+                if (remainingOOP <= 0) return 0;
+                
+                // Calculate average daily cost across all services
+                const totalDays = services.reduce((sum, s) => sum + parseInt(s.days), 0);
+                const avgDailyRate = services.reduce((sum, s) => sum + s.totalCost, 0) / totalDays;
+                
+                // Calculate how much needs to be paid to reach OOP max
+                let amountToOOPMax = remainingOOP;
+                
+                // Simple calculation: days = amount needed / daily responsibility
+                // This is approximate since it depends on deductible/coinsurance split
+                let estimatedDays;
+                if (remainingDeductible > 0) {
+                    // Still in deductible phase - pay 100%
+                    const daysInDeductible = Math.min(remainingDeductible / avgDailyRate, amountToOOPMax / avgDailyRate);
+                    const remainingAfterDeductible = amountToOOPMax - (daysInDeductible * avgDailyRate);
+                    const daysInCoinsurance = remainingAfterDeductible / (avgDailyRate * (coinsurance / 100));
+                    estimatedDays = daysInDeductible + daysInCoinsurance;
+                } else {
+                    // Only coinsurance phase
+                    estimatedDays = amountToOOPMax / (avgDailyRate * (coinsurance / 100));
+                }
+                
+                return Math.ceil(estimatedDays);
             };
 
             // Recalculate when inputs change
@@ -515,6 +474,14 @@
                                                         </p>
                                                     </div>
                                                 )}
+                                                
+                                                {calculation.daysToFullCoverage > 0 && (
+                                                    <div className="mt-3 p-3 bg-white/10 rounded">
+                                                        <p className="text-xs text-blue-100">
+                                                            Days until 100% insurance coverage: {calculation.daysToFullCoverage} days
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
                                             
                                             <div className="grid grid-cols-2 gap-4 mt-6">
@@ -532,18 +499,6 @@
                                         {/* Payment Collection Options */}
                                         <div className="bg-white rounded-lg shadow p-6">
                                             <h3 className="text-lg font-semibold mb-4">Payment Collection Options</h3>
-                                            
-                                            {/* Days until 100% coverage - moved here */}
-                                            {calculation.daysToFullCoverage > 0 && (
-                                                <div className="mb-4 p-3 bg-green-50 rounded-lg">
-                                                    <p className="text-sm font-medium text-green-700">
-                                                        📅 {calculation.daysToFullCoverage} more days of treatment until 100% insurance coverage
-                                                    </p>
-                                                    <p className="text-xs text-green-600 mt-1">
-                                                        Based on service progression and daily rates
-                                                    </p>
-                                                </div>
-                                            )}
                                             
                                             <div className="space-y-4">
                                                 {/* Option 1 - Emergency */}
@@ -840,6 +795,17 @@
                                                     </div>
                                                 </div>
                                             </div>
+                                            
+                                            {calculation.daysToFullCoverage > 0 && (
+                                                <div className="mt-4 p-3 bg-green-50 rounded">
+                                                    <p className="text-sm font-medium text-green-700">
+                                                        📅 {calculation.daysToFullCoverage} more days of treatment until 100% insurance coverage
+                                                    </p>
+                                                    <p className="text-xs text-green-600 mt-1">
+                                                        Based on average daily rates of selected services
+                                                    </p>
+                                                </div>
+                                            )}
                                             
                                             {/* Days to Pay Responsibility Breakdown */}
                                             {calculation.daysToPayResponsibility && calculation.daysToPayResponsibility.breakdown.length > 0 && (
