@@ -816,18 +816,14 @@
                                                                 </span>
                                                                 <span className="font-medium">${service.totalCost.toLocaleString()}</span>
                                                             </div>
-                                                            <div className="mt-2 grid grid-cols-3 gap-4 text-xs">
+                                                            <div className="mt-2 grid grid-cols-2 gap-4 text-xs">
                                                                 <div className="bg-red-50 p-2 rounded">
                                                                     <div className="font-semibold text-red-700">Client Coinsurance</div>
                                                                     <div className="text-red-600">${(parseFloat(service.dailyRate) * (parseFloat(benefits.coinsurance) || 0) / 100).toLocaleString()}/day</div>
                                                                 </div>
-                                                                <div className="bg-red-50 p-2 rounded">
-                                                                    <div className="font-semibold text-red-700">Client Deductible</div>
-                                                                    <div className="text-red-600">${(parseFloat(service.dailyRate) * (parseFloat(benefits.coinsurance) || 0) / 100).toLocaleString()}/day</div>
-                                                                </div>
-                                                                <div className="bg-green-50 p-2 rounded">
-                                                                    <div className="font-semibold text-green-700">Insurance Daily Rate</div>
-                                                                    <div className="text-green-600">${(parseFloat(service.dailyRate) * (100 - (parseFloat(benefits.coinsurance) || 0)) / 100).toLocaleString()}/day</div>
+                                                                <div className="bg-gray-50 p-2 rounded">
+                                                                    <div className="font-semibold text-gray-700">Deductible Amount</div>
+                                                                    <div className="text-gray-600">${(parseFloat(benefits.deductible) || 0).toLocaleString()}</div>
                                                                 </div>
                                                             </div>
                                                         </div>
