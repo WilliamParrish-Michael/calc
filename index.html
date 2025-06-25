@@ -549,7 +549,23 @@
                                             {calculation.insuranceAt100Day ? (
                                                 <div className="text-center mb-6">
                                                     <div className="text-5xl font-bold mb-2">
-                                                        Day {calculation.insuranceAt100Day}
+                                                        Day {(() => {
+                                                            // Recalculate to ensure accuracy
+                                                            const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
+                                                            const remainingOOP = Math.max(0, (parseFloat(benefits.oopMax) || 0) - (parseFloat(benefits.oopMet) || 0));
+                                                            const dailyRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
+                                                            const dailyClientCost = dailyRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
+                                                            
+                                                            if (dailyClientCost > 0) {
+                                                                const deductibleDays = remainingDeductible > 0 ? Math.ceil(remainingDeductible / dailyClientCost) : 0;
+                                                                const oopAfterDeductible = benefits.deductibleCountsTowardOOP ? 
+                                                                    Math.max(0, remainingOOP - remainingDeductible) : remainingOOP;
+                                                                const coinsuranceDays = oopAfterDeductible > 0 ? Math.ceil(oopAfterDeductible / dailyClientCost) : 0;
+                                                                const totalDaysToOOPMax = deductibleDays + coinsuranceDays;
+                                                                return totalDaysToOOPMax + 1; // Day when insurance pays 100%
+                                                            }
+                                                            return calculation.insuranceAt100Day;
+                                                        })()}
                                                     </div>
                                                     <p className="text-purple-100">Insurance starts paying 100% of covered services</p>
                                                     <div className="mt-3 bg-white/20 rounded-lg px-4 py-2 text-sm">
@@ -619,9 +635,26 @@
                                                         {(() => {
                                                             if (!calculation.insuranceAt100Day) return 0;
                                                             
-                                                            const totalServiceDays = calculation.services.reduce((sum, service) => sum + parseInt(service.days), 0);
-                                                            const daysBeforeCoverage = calculation.insuranceAt100Day - 1;
-                                                            return Math.max(0, totalServiceDays - daysBeforeCoverage);
+                                                            // Recalculate the day when insurance pays 100%
+                                                            const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
+                                                            const remainingOOP = Math.max(0, (parseFloat(benefits.oopMax) || 0) - (parseFloat(benefits.oopMet) || 0));
+                                                            const dailyRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
+                                                            const dailyClientCost = dailyRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
+                                                            
+                                                            if (dailyClientCost > 0) {
+                                                                const deductibleDays = remainingDeductible > 0 ? Math.ceil(remainingDeductible / dailyClientCost) : 0;
+                                                                const oopAfterDeductible = benefits.deductibleCountsTowardOOP ? 
+                                                                    Math.max(0, remainingOOP - remainingDeductible) : remainingOOP;
+                                                                const coinsuranceDays = oopAfterDeductible > 0 ? Math.ceil(oopAfterDeductible / dailyClientCost) : 0;
+                                                                const totalDaysToOOPMax = deductibleDays + coinsuranceDays;
+                                                                const insuranceStartsDay = totalDaysToOOPMax + 1;
+                                                                
+                                                                const totalServiceDays = calculation.services.reduce((sum, service) => sum + parseInt(service.days), 0);
+                                                                const freeDays = totalServiceDays - (insuranceStartsDay - 1);
+                                                                return Math.max(0, freeDays);
+                                                            }
+                                                            
+                                                            return 0;
                                                         })()}
                                                     </div>
                                                     <div className="text-xs text-purple-200">Insurance pays 100%</div>
@@ -632,7 +665,23 @@
                                                 <div className="mt-4 p-4 bg-white/20 rounded-lg">
                                                     <div className="text-center">
                                                         <div className="text-lg font-bold text-white">
-                                                            🎯 Key Insight: After Day {calculation.insuranceAt100Day}, client pays $0 for covered services!
+                                                            🎯 Key Insight: After Day {(() => {
+                                                                // Recalculate to ensure accuracy  
+                                                                const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
+                                                                const remainingOOP = Math.max(0, (parseFloat(benefits.oopMax) || 0) - (parseFloat(benefits.oopMet) || 0));
+                                                                const dailyRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
+                                                                const dailyClientCost = dailyRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
+                                                                
+                                                                if (dailyClientCost > 0) {
+                                                                    const deductibleDays = remainingDeductible > 0 ? Math.ceil(remainingDeductible / dailyClientCost) : 0;
+                                                                    const oopAfterDeductible = benefits.deductibleCountsTowardOOP ? 
+                                                                        Math.max(0, remainingOOP - remainingDeductible) : remainingOOP;
+                                                                    const coinsuranceDays = oopAfterDeductible > 0 ? Math.ceil(oopAfterDeductible / dailyClientCost) : 0;
+                                                                    const totalDaysToOOPMax = deductibleDays + coinsuranceDays;
+                                                                    return totalDaysToOOPMax; // Last day client pays (Day 25)
+                                                                }
+                                                                return calculation.insuranceAt100Day - 1;
+                                                            })()}, client pays $0 for covered services!
                                                         </div>
                                                         <div className="text-sm text-purple-100 mt-1">
                                                             Perfect time to schedule additional treatment or continuing care
