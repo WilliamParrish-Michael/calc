@@ -71,7 +71,24 @@
             };
 
             const updateBenefit = (field, value) => {
-                setBenefits(prev => ({ ...prev, [field]: value }));
+                // Add validation
+                let validatedValue = value;
+                
+                if (field === 'deductibleMet' || field === 'oopMet') {
+                    const max = field === 'deductibleMet' ? parseFloat(benefits.deductible) || 0 : parseFloat(benefits.oopMax) || 0;
+                    const numValue = parseFloat(value) || 0;
+                    if (numValue > max) {
+                        validatedValue = max.toString();
+                    }
+                }
+                
+                if (field === 'coinsurance') {
+                    const numValue = parseFloat(value) || 0;
+                    if (numValue > 100) validatedValue = '100';
+                    if (numValue < 0) validatedValue = '0';
+                }
+                
+                setBenefits(prev => ({ ...prev, [field]: validatedValue }));
             };
 
             const toggleService = (service) => {
@@ -82,9 +99,16 @@
             };
 
             const updateService = (service, field, value) => {
+                // Add validation for positive numbers
+                let validatedValue = value;
+                if (field === 'dailyRate' || field === 'days') {
+                    const numValue = parseFloat(value) || 0;
+                    if (numValue < 0) validatedValue = '0';
+                }
+                
                 setServices(prev => ({
                     ...prev,
-                    [service]: { ...prev[service], [field]: value }
+                    [service]: { ...prev[service], [field]: validatedValue }
                 }));
             };
 
@@ -128,12 +152,13 @@
                     return;
                 }
 
-                // 1. BASIC CALCULATIONS
+                // Basic calculations
                 const deductible = parseFloat(benefits.deductible) || 0;
                 const deductibleMet = parseFloat(benefits.deductibleMet) || 0;
                 const oopMax = parseFloat(benefits.oopMax) || 0;
                 const oopMet = parseFloat(benefits.oopMet) || 0;
                 const coinsurance = parseFloat(benefits.coinsurance) || 0;
+                const coinsuranceDecimal = coinsurance / 100;
 
                 const totalProviderCharges = selectedServices.reduce((sum, service) => sum + service.totalCost, 0);
                 const allowedAmount = totalProviderCharges;
@@ -141,166 +166,62 @@
                 const remainingDeductible = Math.max(0, deductible - deductibleMet);
                 const remainingOOP = Math.max(0, oopMax - oopMet);
                 
-                // 2. CLIENT RESPONSIBILITY CALCULATION
+                // Calculate theoretical responsibility before OOP max
                 const deductibleResponsibility = Math.min(allowedAmount, remainingDeductible);
                 const amountAfterDeductible = Math.max(0, allowedAmount - deductibleResponsibility);
-                const coinsuranceResponsibility = amountAfterDeductible * (coinsurance / 100);
+                const coinsuranceResponsibility = amountAfterDeductible * coinsuranceDecimal;
                 
-                let oopApplicableAmount = 0;
-                if (benefits.deductibleCountsTowardOOP) {
-                    oopApplicableAmount = deductibleResponsibility + coinsuranceResponsibility;
-                } else {
-                    oopApplicableAmount = coinsuranceResponsibility;
-                }
+                // Total theoretical responsibility
+                let theoreticalResponsibility = deductibleResponsibility + coinsuranceResponsibility;
                 
-                const actualOOPAmount = Math.min(oopApplicableAmount, remainingOOP);
+                // Apply OOP max cap
+                const actualResponsibility = Math.min(theoreticalResponsibility, remainingOOP);
                 
-                let actualDeductiblePaid, actualCoinsurancePaid;
+                // Calculate actual amounts paid
+                const actualDeductiblePaid = Math.min(deductibleResponsibility, remainingOOP);
+                const actualCoinsurancePaid = Math.max(0, actualResponsibility - actualDeductiblePaid);
                 
-                if (benefits.deductibleCountsTowardOOP) {
-                    actualDeductiblePaid = Math.min(deductibleResponsibility, remainingOOP);
-                    actualCoinsurancePaid = Math.max(0, actualOOPAmount - actualDeductiblePaid);
-                } else {
-                    actualDeductiblePaid = deductibleResponsibility;
-                    actualCoinsurancePaid = Math.min(coinsuranceResponsibility, remainingOOP);
-                }
-                
-                const totalClientCost = actualDeductiblePaid + actualCoinsurancePaid;
+                const totalClientCost = actualResponsibility;
                 const insurancePays = allowedAmount - totalClientCost;
 
-                // 3. SERVICE-BY-SERVICE BREAKDOWN
-                const serviceBreakdown = [];
-                let runningDeductible = remainingDeductible;
-                let runningOOP = remainingOOP;
+                // SIMPLIFIED: Calculate when insurance pays 100% using user's formula
+                let daysUntil100Percent = null;
+                let runningDays = 0;
+                let remainingClientCost = totalClientCost;
                 
-                selectedServices.forEach((service, index) => {
-                    const dailyRate = parseFloat(service.dailyRate);
-                    const totalDays = parseInt(service.days);
-                    const serviceTotal = service.totalCost;
-                    
-                    // Calculate client percentage for each service
-                    const serviceDeductible = Math.min(serviceTotal, runningDeductible);
-                    const serviceAfterDeductible = serviceTotal - serviceDeductible;
-                    const serviceCoinsurance = serviceAfterDeductible * (coinsurance / 100);
-                    
-                    let serviceOOPContribution = 0;
-                    if (benefits.deductibleCountsTowardOOP) {
-                        serviceOOPContribution = serviceDeductible + serviceCoinsurance;
-                    } else {
-                        serviceOOPContribution = serviceCoinsurance;
-                    }
-                    
-                    const serviceOOPCapped = Math.min(serviceOOPContribution, runningOOP);
-                    
-                    let serviceClientCost = 0;
-                    if (benefits.deductibleCountsTowardOOP) {
-                        serviceClientCost = Math.min(serviceDeductible + serviceCoinsurance, serviceOOPCapped);
-                    } else {
-                        serviceClientCost = serviceDeductible + Math.min(serviceCoinsurance, serviceOOPCapped);
-                    }
-                    
-                    const clientPercentage = serviceTotal > 0 ? (serviceClientCost / serviceTotal * 100) : 0;
-                    
-                    // Calculate days based on client payment percentage
-                    let deductibleDays = 0;
-                    let deductibleAmount = 0;
-                    let coinsuranceDays = 0;
-                    let coinsuranceAmount = 0;
-                    let freeDays = 0;
-                    
-                    if (runningDeductible > 0) {
-                        const clientDailyPayment = dailyRate * (clientPercentage / 100);
-                        if (clientDailyPayment > 0) {
-                            deductibleDays = Math.min(totalDays, Math.ceil(runningDeductible / clientDailyPayment));
-                            deductibleAmount = Math.min(runningDeductible, deductibleDays * clientDailyPayment);
-                        }
-                        runningDeductible = Math.max(0, runningDeductible - deductibleAmount);
-                    }
-                    
-                    const remainingDaysInService = totalDays - deductibleDays;
-                    if (remainingDaysInService > 0) {
-                        coinsuranceDays = remainingDaysInService;
-                        coinsuranceAmount = coinsuranceDays * dailyRate * (coinsurance / 100);
-                    }
-                    
-                    freeDays = totalDays - deductibleDays - coinsuranceDays;
-                    
-                    const totalClientCostForService = deductibleAmount + coinsuranceAmount;
-                    const insuranceAmountForService = serviceTotal - totalClientCostForService;
-                    
-                    serviceBreakdown.push({
-                        ...service,
-                        deductibleDays: deductibleDays,
-                        deductibleAmount: deductibleAmount,
-                        coinsuranceDays: coinsuranceDays,
-                        coinsuranceAmount: coinsuranceAmount,
-                        clientTotalForService: totalClientCostForService,
-                        insuranceAmountForService: insuranceAmountForService,
-                        clientPercentage: clientPercentage,
-                        deductibleClientPercentage: clientPercentage,
-                        freeDays: freeDays
-                    });
-                    
-                    if (benefits.deductibleCountsTowardOOP) {
-                        runningOOP = Math.max(0, runningOOP - (deductibleAmount + coinsuranceAmount));
-                    } else {
-                        runningOOP = Math.max(0, runningOOP - coinsuranceAmount);
-                    }
-                });
-
-                // 4. Calculate Insurance At 100% Day
-                let insuranceAt100Day = null;
-                let runningDeductibleForCalc = deductibleMet;
-                let runningOOPForCalc = oopMet;
-                let dayCounter = 1;
-                
-                for (const service of selectedServices) {
+                for (let i = 0; i < selectedServices.length; i++) {
+                    const service = selectedServices[i];
                     const dailyRate = parseFloat(service.dailyRate);
                     const serviceDays = parseInt(service.days);
                     
-                    const serviceBreakdownItem = serviceBreakdown.find(sb => sb.name === service.name);
-                    const clientPercentageForService = serviceBreakdownItem ? serviceBreakdownItem.clientPercentage : 0;
+                    // During deductible phase: client pays 100%
+                    // After deductible: client pays coinsurance%
+                    // We'll use coinsurance rate as approximation for simplicity
+                    const clientDailyRate = dailyRate * coinsuranceDecimal;
                     
-                    for (let day = 1; day <= serviceDays; day++) {
-                        if (runningDeductibleForCalc < deductible) {
-                            const dailyClientPayment = dailyRate * (clientPercentageForService / 100);
-                            runningDeductibleForCalc += dailyClientPayment;
-                            
-                            if (benefits.deductibleCountsTowardOOP) {
-                                runningOOPForCalc += dailyClientPayment;
-                            }
-                        } else {
-                            const dailyCoinsurance = dailyRate * (coinsurance / 100);
-                            runningOOPForCalc += dailyCoinsurance;
-                        }
-                        
-                        if (runningOOPForCalc >= oopMax && insuranceAt100Day === null) {
-                            insuranceAt100Day = dayCounter;
-                            break;
-                        }
-                        
-                        dayCounter++;
+                    const serviceClientCost = clientDailyRate * serviceDays;
+                    
+                    if (remainingClientCost <= serviceClientCost) {
+                        // Insurance will pay 100% during this service
+                        const daysInThisService = Math.ceil(remainingClientCost / clientDailyRate);
+                        daysUntil100Percent = runningDays + daysInThisService;
+                        break;
                     }
                     
-                    if (insuranceAt100Day !== null) break;
+                    remainingClientCost -= serviceClientCost;
+                    runningDays += serviceDays;
                 }
 
-                // 6. BENEFIT STATUS AFTER SERVICE
-                const newDeductibleMet = deductibleMet + actualDeductiblePaid;
+                // Benefit status after service
+                const newDeductibleMet = Math.min(deductible, deductibleMet + actualDeductiblePaid);
                 const newRemainingDeductible = Math.max(0, deductible - newDeductibleMet);
                 
-                let newOOPMet = 0;
-                if (benefits.deductibleCountsTowardOOP) {
-                    newOOPMet = oopMet + actualDeductiblePaid + actualCoinsurancePaid;
-                } else {
-                    newOOPMet = oopMet + actualCoinsurancePaid;
-                }
+                let newOOPMet = oopMet + actualResponsibility;
                 const newRemainingOOP = Math.max(0, oopMax - newOOPMet);
 
                 setCalculation({
                     services: selectedServices,
-                    serviceBreakdown: serviceBreakdown,
-                    insuranceAt100Day: insuranceAt100Day,
+                    daysUntil100Percent: daysUntil100Percent,
                     totals: {
                         providerCharges: totalProviderCharges,
                         allowedAmount: allowedAmount,
@@ -310,7 +231,8 @@
                         insurancePays: insurancePays,
                         remainingDeductible: newRemainingDeductible,
                         remainingOOP: newRemainingOOP,
-                        oopMaxReached: newRemainingOOP === 0
+                        oopMaxReached: newRemainingOOP === 0,
+                        theoreticalResponsibility: theoreticalResponsibility
                     },
                     currentStatus: {
                         remainingDeductible: remainingDeductible,
@@ -370,6 +292,9 @@
                                                     onChange={(e) => updateBenefit('deductibleMet', e.target.value)}
                                                     placeholder="1500"
                                                 />
+                                                {parseFloat(benefits.deductibleMet) > parseFloat(benefits.deductible) && benefits.deductible && (
+                                                    <p className="text-xs text-red-600 mt-1">Cannot exceed deductible</p>
+                                                )}
                                             </div>
                                         </div>
 
@@ -393,6 +318,9 @@
                                                     onChange={(e) => updateBenefit('oopMet', e.target.value)}
                                                     placeholder="2000"
                                                 />
+                                                {parseFloat(benefits.oopMet) > parseFloat(benefits.oopMax) && benefits.oopMax && (
+                                                    <p className="text-xs text-red-600 mt-1">Cannot exceed OOP max</p>
+                                                )}
                                             </div>
                                         </div>
 
@@ -543,166 +471,25 @@
                                         </div>
 
                                         {/* When Does Insurance Pay 100%? */}
-                                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-sm p-6 text-white">
-                                            <h3 className="text-lg font-semibold mb-4">📅 When Does Insurance Pay 100%?</h3>
-                                            
-                                            {calculation.insuranceAt100Day ? (
-                                                <div className="text-center mb-6">
+                                        {calculation.daysUntil100Percent && (
+                                            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-sm p-6 text-white">
+                                                <h3 className="text-lg font-semibold mb-4">📅 When Does Insurance Pay 100%?</h3>
+                                                <div className="text-center mb-4">
                                                     <div className="text-5xl font-bold mb-2">
-                                                        Day {(() => {
-                                                            // Recalculate to ensure accuracy
-                                                            const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
-                                                            const remainingOOP = Math.max(0, (parseFloat(benefits.oopMax) || 0) - (parseFloat(benefits.oopMet) || 0));
-                                                            const dailyRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
-                                                            const dailyClientCost = dailyRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
-                                                            
-                                                            if (dailyClientCost > 0) {
-                                                                const deductibleDays = remainingDeductible > 0 ? Math.ceil(remainingDeductible / dailyClientCost) : 0;
-                                                                const oopAfterDeductible = benefits.deductibleCountsTowardOOP ? 
-                                                                    Math.max(0, remainingOOP - remainingDeductible) : remainingOOP;
-                                                                const coinsuranceDays = oopAfterDeductible > 0 ? Math.ceil(oopAfterDeductible / dailyClientCost) : 0;
-                                                                const totalDaysToOOPMax = deductibleDays + coinsuranceDays;
-                                                                return totalDaysToOOPMax + 1; // Day when insurance pays 100%
-                                                            }
-                                                            return calculation.insuranceAt100Day;
-                                                        })()}
+                                                        Day {calculation.daysUntil100Percent}
                                                     </div>
                                                     <p className="text-purple-100">Insurance starts paying 100% of covered services</p>
                                                     <div className="mt-3 bg-white/20 rounded-lg px-4 py-2 text-sm">
                                                         <span className="font-semibold">🎉 Out-of-Pocket Maximum Reached!</span>
                                                     </div>
                                                 </div>
-                                            ) : calculation.totals.remainingOOP === 0 ? (
-                                                <div className="text-center mb-6">
-                                                    <div className="text-4xl font-bold mb-2">
-                                                        Day 1
-                                                    </div>
-                                                    <p className="text-purple-100">OOP max already reached - Insurance pays 100% immediately!</p>
-                                                </div>
-                                            ) : (
-                                                <div className="text-center mb-6">
-                                                    <div className="text-3xl font-bold mb-2">
-                                                        After Selected Services
-                                                    </div>
-                                                    <p className="text-purple-100">OOP max not reached with current services</p>
-                                                    <div className="text-lg mt-2">
-                                                        ${calculation.totals.remainingOOP.toLocaleString()} still needed to reach 100% coverage
-                                                    </div>
-                                                </div>
-                                            )}
-                                            
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-                                                <div className="bg-white/10 rounded p-3">
-                                                    <div className="text-purple-100">Deductible Phase</div>
-                                                    <div className="text-lg font-semibold">
-                                                        {(() => {
-                                                            const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
-                                                            if (remainingDeductible === 0) return 0;
-                                                            
-                                                            const firstServiceRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
-                                                            const dailyCoinsuranceAmount = firstServiceRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
-                                                            return dailyCoinsuranceAmount > 0 ? Math.ceil(remainingDeductible / dailyCoinsuranceAmount) : 0;
-                                                        })()}
-                                                    </div>
-                                                    <div className="text-xs text-purple-200">Client pays {benefits.coinsurance}% ($200/day)</div>
-                                                </div>
-                                                <div className="bg-white/10 rounded p-3">
-                                                    <div className="text-purple-100">Coinsurance Phase</div>
-                                                    <div className="text-lg font-semibold">
-                                                        {(() => {
-                                                            if (!calculation.insuranceAt100Day) return 0;
-                                                            
-                                                            const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
-                                                            const remainingOOP = Math.max(0, (parseFloat(benefits.oopMax) || 0) - (parseFloat(benefits.oopMet) || 0));
-                                                            const firstServiceRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
-                                                            const dailyCoinsuranceAmount = firstServiceRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
-                                                            
-                                                            const deductibleDays = remainingDeductible > 0 && dailyCoinsuranceAmount > 0 ? 
-                                                                Math.ceil(remainingDeductible / dailyCoinsuranceAmount) : 0;
-                                                            
-                                                            const remainingOOPAfterDeductible = benefits.deductibleCountsTowardOOP ? 
-                                                                remainingOOP - remainingDeductible : remainingOOP;
-                                                            
-                                                            return remainingOOPAfterDeductible > 0 && dailyCoinsuranceAmount > 0 ? 
-                                                                Math.ceil(remainingOOPAfterDeductible / dailyCoinsuranceAmount) : 0;
-                                                        })()}
-                                                    </div>
-                                                    <div className="text-xs text-purple-200">
-                                                        Client pays {benefits.coinsurance}% (${(() => {
-                                                            const firstServiceRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
-                                                            const clientPortion = firstServiceRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
-                                                            return clientPortion.toLocaleString();
-                                                        })()}/day)
-                                                    </div>
-                                                    <div className="text-xs text-purple-200">
-                                                        Insurance pays {100 - (parseFloat(benefits.coinsurance) || 0)}% (${(() => {
-                                                            const firstServiceRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
-                                                            const insurancePortion = firstServiceRate * ((100 - (parseFloat(benefits.coinsurance) || 0)) / 100);
-                                                            return insurancePortion.toLocaleString();
-                                                        })()}/day)
-                                                    </div>
-                                                </div>
-                                                <div className="bg-white/10 rounded p-3">
-                                                    <div className="text-purple-100">100% Coverage</div>
-                                                    <div className="text-lg font-semibold">
-                                                        {(() => {
-                                                            if (!calculation.insuranceAt100Day) return 0;
-                                                            
-                                                            // Recalculate the day when insurance pays 100%
-                                                            const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
-                                                            const remainingOOP = Math.max(0, (parseFloat(benefits.oopMax) || 0) - (parseFloat(benefits.oopMet) || 0));
-                                                            const dailyRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
-                                                            const dailyClientCost = dailyRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
-                                                            
-                                                            if (dailyClientCost > 0) {
-                                                                const deductibleDays = remainingDeductible > 0 ? Math.ceil(remainingDeductible / dailyClientCost) : 0;
-                                                                const oopAfterDeductible = benefits.deductibleCountsTowardOOP ? 
-                                                                    Math.max(0, remainingOOP - remainingDeductible) : remainingOOP;
-                                                                const coinsuranceDays = oopAfterDeductible > 0 ? Math.ceil(oopAfterDeductible / dailyClientCost) : 0;
-                                                                const totalDaysToOOPMax = deductibleDays + coinsuranceDays;
-                                                                const insuranceStartsDay = totalDaysToOOPMax + 1;
-                                                                
-                                                                const totalServiceDays = calculation.services.reduce((sum, service) => sum + parseInt(service.days), 0);
-                                                                const freeDays = totalServiceDays - (insuranceStartsDay - 1);
-                                                                return Math.max(0, freeDays);
-                                                            }
-                                                            
-                                                            return 0;
-                                                        })()}
-                                                    </div>
-                                                    <div className="text-xs text-purple-200">Insurance pays 100%</div>
+                                                <div className="p-4 bg-white/20 rounded-lg">
+                                                    <p className="text-center text-sm">
+                                                        After day {calculation.daysUntil100Percent}, all covered services are FREE for the rest of the year!
+                                                    </p>
                                                 </div>
                                             </div>
-                                            
-                                            {calculation.insuranceAt100Day && (
-                                                <div className="mt-4 p-4 bg-white/20 rounded-lg">
-                                                    <div className="text-center">
-                                                        <div className="text-lg font-bold text-white">
-                                                            🎯 Key Insight: After Day {(() => {
-                                                                // Recalculate to ensure accuracy  
-                                                                const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
-                                                                const remainingOOP = Math.max(0, (parseFloat(benefits.oopMax) || 0) - (parseFloat(benefits.oopMet) || 0));
-                                                                const dailyRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
-                                                                const dailyClientCost = dailyRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
-                                                                
-                                                                if (dailyClientCost > 0) {
-                                                                    const deductibleDays = remainingDeductible > 0 ? Math.ceil(remainingDeductible / dailyClientCost) : 0;
-                                                                    const oopAfterDeductible = benefits.deductibleCountsTowardOOP ? 
-                                                                        Math.max(0, remainingOOP - remainingDeductible) : remainingOOP;
-                                                                    const coinsuranceDays = oopAfterDeductible > 0 ? Math.ceil(oopAfterDeductible / dailyClientCost) : 0;
-                                                                    const totalDaysToOOPMax = deductibleDays + coinsuranceDays;
-                                                                    return totalDaysToOOPMax; // Last day client pays (Day 25)
-                                                                }
-                                                                return calculation.insuranceAt100Day - 1;
-                                                            })()}, client pays $0 for covered services!
-                                                        </div>
-                                                        <div className="text-sm text-purple-100 mt-1">
-                                                            Perfect time to schedule additional treatment or continuing care
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
+                                        )}
 
                                         {/* Payment Collection Scenarios */}
                                         <div className="bg-white rounded-lg shadow-sm p-6">
@@ -731,7 +518,6 @@
                                                                 <div>• Satisfies remaining deductible requirement</div>
                                                                 <div>• After this payment: Client pays only {benefits.coinsurance}% coinsurance</div>
                                                                 <div>• Future services much more affordable</div>
-                                                                <div>• Conservative option for budget-conscious clients</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -756,10 +542,9 @@
                                                         <div className="bg-blue-50 p-3 rounded border border-blue-200">
                                                             <div className="font-medium mb-1">What This Covers:</div>
                                                             <div className="space-y-1 text-xs">
-                                                                <div>• Covers current service plus builds credit toward future services</div>
-                                                                <div>• Significantly reduces remaining out-of-pocket maximum</div>
-                                                                <div>• Balanced approach between current and future costs</div>
-                                                                <div>• Good option for clients likely to need more treatment</div>
+                                                                <div>• Covers current service plus builds credit</div>
+                                                                <div>• Moves halfway to 100% insurance coverage</div>
+                                                                <div>• Good for clients likely needing more treatment</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -784,16 +569,16 @@
                                                         <div className="bg-green-50 p-3 rounded border border-green-200">
                                                             <div className="font-medium mb-1">What This Covers:</div>
                                                             <div className="space-y-1 text-xs">
-                                                                <div>• Satisfies entire out-of-pocket maximum for the year</div>
-                                                                <div>• Insurance pays 100% of all covered services afterward</div>
-                                                                <div>• Maximum value for clients needing extensive treatment</div>
-                                                                <div>• Peace of mind - no more surprise medical bills</div>
+                                                                <div>• Satisfies entire OOP maximum for the year</div>
+                                                                <div>• Insurance pays 100% immediately</div>
+                                                                <div>• ALL covered services FREE rest of year</div>
+                                                                <div>• Best value for ongoing treatment needs</div>
                                                             </div>
                                                         </div>
                                                         <div className="bg-white p-3 rounded border border-green-300">
                                                             <div className="text-center">
                                                                 <div className="text-lg font-bold text-green-700">$0 Future Costs</div>
-                                                                <div className="text-xs text-green-600">All covered services FREE rest of year</div>
+                                                                <div className="text-xs text-green-600">Complete financial protection</div>
                                                             </div>
                                                         </div>
                                                     </div>
@@ -803,33 +588,17 @@
 
                                         {/* Detailed Breakdown */}
                                         <div className="bg-white rounded-lg shadow-sm p-6">
-                                            <h3 className="text-lg font-semibold text-gray-800 mb-4">Detailed Cost Breakdown</h3>
+                                            <h3 className="text-lg font-semibold text-gray-800 mb-4">Cost Breakdown</h3>
                                             
                                             <div className="mb-6">
                                                 <h4 className="text-sm font-medium text-gray-700 mb-3">Selected Services</h4>
-                                                <div className="space-y-3">
+                                                <div className="space-y-2">
                                                     {calculation.services.map((service, idx) => (
-                                                        <div key={idx} className="border-b border-gray-100 pb-3">
-                                                            <div className="flex justify-between items-center">
-                                                                <span className="text-sm text-gray-600">
-                                                                    {serviceInfo[service.name].fullName} ({service.days} days @ ${service.dailyRate}/day)
-                                                                </span>
-                                                                <span className="font-medium">${service.totalCost.toLocaleString()}</span>
-                                                            </div>
-                                                            <div className="mt-2 grid grid-cols-3 gap-4 text-xs">
-                                                                <div className="bg-red-50 p-2 rounded">
-                                                                    <div className="font-semibold text-red-700">Client Coinsurance</div>
-                                                                    <div className="text-red-600">${(parseFloat(service.dailyRate) * (parseFloat(benefits.coinsurance) || 0) / 100).toLocaleString()}/day</div>
-                                                                </div>
-                                                                <div className="bg-red-50 p-2 rounded">
-                                                                    <div className="font-semibold text-red-700">Client Deductible</div>
-                                                                    <div className="text-red-600">${(parseFloat(service.dailyRate) * (parseFloat(benefits.coinsurance) || 0) / 100).toLocaleString()}/day</div>
-                                                                </div>
-                                                                <div className="bg-green-50 p-2 rounded">
-                                                                    <div className="font-semibold text-green-700">Insurance Daily Rate</div>
-                                                                    <div className="text-green-600">${(parseFloat(service.dailyRate) * (100 - (parseFloat(benefits.coinsurance) || 0)) / 100).toLocaleString()}/day</div>
-                                                                </div>
-                                                            </div>
+                                                        <div key={idx} className="flex justify-between items-center py-2 border-b border-gray-100">
+                                                            <span className="text-sm text-gray-600">
+                                                                {serviceInfo[service.name].fullName} ({service.days} days @ ${service.dailyRate}/day)
+                                                            </span>
+                                                            <span className="font-medium">${service.totalCost.toLocaleString()}</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -842,17 +611,14 @@
                                                 </div>
                                                 
                                                 <div className="border-t pt-3">
-                                                    <div className="text-sm font-medium text-gray-700 mb-2">Client Responsibility:</div>
-                                                    <div className="ml-4 space-y-2">
-                                                        <div className="flex justify-between items-center py-1">
-                                                            <span className="text-sm text-gray-600">Deductible Applied</span>
-                                                            <span className="font-medium text-red-600">${calculation.totals.deductibleApplied.toLocaleString()}</span>
-                                                        </div>
-                                                        
-                                                        <div className="flex justify-between items-center py-1">
-                                                            <span className="text-sm text-gray-600">Coinsurance ({benefits.coinsurance}%)</span>
-                                                            <span className="font-medium text-orange-600">${calculation.totals.coinsuranceAmount.toLocaleString()}</span>
-                                                        </div>
+                                                    <div className="flex justify-between items-center py-1">
+                                                        <span className="text-sm text-gray-600">Deductible Applied</span>
+                                                        <span className="font-medium text-red-600">-${calculation.totals.deductibleApplied.toLocaleString()}</span>
+                                                    </div>
+                                                    
+                                                    <div className="flex justify-between items-center py-1">
+                                                        <span className="text-sm text-gray-600">Coinsurance ({benefits.coinsurance}%)</span>
+                                                        <span className="font-medium text-red-600">-${calculation.totals.coinsuranceAmount.toLocaleString()}</span>
                                                     </div>
                                                 </div>
                                                 
@@ -861,20 +627,12 @@
                                                         <div className="text-sm text-green-700 font-medium">
                                                             Out-of-Pocket Maximum Reached
                                                         </div>
-                                                        <div className="text-xs text-green-600 mt-1">
-                                                            Client responsibility capped at remaining OOP max
-                                                        </div>
                                                     </div>
                                                 )}
                                                 
-                                                <div className="flex justify-between items-center py-3 border-t border-b font-semibold">
+                                                <div className="flex justify-between items-center py-3 border-t font-semibold">
                                                     <span>Total Client Responsibility</span>
-                                                    <span className="text-lg text-red-600">${calculation.totals.totalClientCost.toLocaleString()}</span>
-                                                </div>
-
-                                                <div className="flex justify-between items-center py-2">
-                                                    <span className="text-sm text-gray-600">Insurance Pays</span>
-                                                    <span className="font-medium text-green-600">${calculation.totals.insurancePays.toLocaleString()}</span>
+                                                    <span className="text-lg text-indigo-600">${calculation.totals.totalClientCost.toLocaleString()}</span>
                                                 </div>
                                             </div>
 
@@ -894,9 +652,6 @@
                                                                 style={{width: `${Math.min(100, (((parseFloat(benefits.deductible) || 0) - calculation.totals.remainingDeductible) / (parseFloat(benefits.deductible) || 1)) * 100)}%`}}
                                                             ></div>
                                                         </div>
-                                                        <div className="text-xs text-gray-500 mt-1">
-                                                            ${((parseFloat(benefits.deductible) || 0) - calculation.totals.remainingDeductible).toLocaleString()} satisfied
-                                                        </div>
                                                     </div>
                                                     <div>
                                                         <div className="flex justify-between text-xs mb-1">
@@ -911,30 +666,8 @@
                                                                 style={{width: `${Math.min(100, (((parseFloat(benefits.oopMax) || 0) - calculation.totals.remainingOOP) / (parseFloat(benefits.oopMax) || 1)) * 100)}%`}}
                                                             ></div>
                                                         </div>
-                                                        <div className="text-xs text-gray-500 mt-1">
-                                                            ${((parseFloat(benefits.oopMax) || 0) - calculation.totals.remainingOOP).toLocaleString()} satisfied
-                                                            {!benefits.deductibleCountsTowardOOP && (
-                                                                <span className="text-amber-600 ml-2">(Deductible not included)</span>
-                                                            )}
-                                                        </div>
                                                     </div>
                                                 </div>
-                                                
-                                                {calculation.totals.remainingDeductible === 0 && (
-                                                    <div className="mt-3 p-2 bg-blue-50 rounded border border-blue-200">
-                                                        <div className="text-xs text-blue-700 font-semibold">
-                                                            ✓ Deductible fully satisfied! Future services subject to {benefits.coinsurance}% coinsurance only.
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                
-                                                {calculation.totals.remainingOOP === 0 && (
-                                                    <div className="mt-3 p-2 bg-green-50 rounded border border-green-200">
-                                                        <div className="text-xs text-green-700 font-semibold">
-                                                            ✓ Out-of-Pocket Maximum reached! Insurance pays 100% for all covered services for the rest of the year.
-                                                        </div>
-                                                    </div>
-                                                )}
                                             </div>
                                         </div>
 
@@ -949,7 +682,7 @@
                                     <div className="bg-white rounded-lg shadow-sm p-12 text-center">
                                         <div className="text-gray-400 mb-4">
                                             <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 002 2z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                                             </svg>
                                         </div>
                                         <h3 className="text-lg font-medium text-gray-800 mb-2">No Calculation Yet</h3>
