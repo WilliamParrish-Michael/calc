@@ -175,45 +175,119 @@
                 const newRemainingDeductible = Math.max(0, deductible - newDeductibleMet);
                 const newRemainingOOP = Math.max(0, oopMax - newOOPMet);
 
-                // Calculate day-by-day progression to 100% coverage
+                // Calculate day-by-day progression to 100% coverage (percentage-based)
                 let dayByDayProgression = [];
                 let runningDeductibleMet = deductibleMet;
                 let runningOOPMet = oopMet;
                 let currentDay = 1;
                 let insuranceAt100Day = null;
+                let totalDailyResponsibility = 0;
+                
+                // First pass: calculate total client responsibility
+                selectedServices.forEach(service => {
+                    const dailyRate = parseFloat(service.dailyRate);
+                    const serviceDays = parseInt(service.days);
+                    const serviceTotal = dailyRate * serviceDays;
+                    
+                    // Calculate what portion of this service the client is responsible for
+                    let tempDeductibleMet = runningDeductibleMet;
+                    let tempOOPMet = runningOOPMet;
+                    
+                    const remainingDeductibleForService = Math.max(0, deductible - tempDeductibleMet);
+                    const deductiblePortionForService = Math.min(serviceTotal, remainingDeductibleForService);
+                    tempDeductibleMet += deductiblePortionForService;
+                    
+                    const amountAfterDeductible = serviceTotal - deductiblePortionForService;
+                    const coinsurancePortionForService = amountAfterDeductible * (coinsurance / 100);
+                    
+                    let oopContribution = 0;
+                    if (benefits.deductibleCountsTowardOOP) {
+                        oopContribution = deductiblePortionForService + coinsurancePortionForService;
+                    } else {
+                        oopContribution = coinsurancePortionForService;
+                    }
+                    
+                    const remainingOOPForService = Math.max(0, oopMax - tempOOPMet);
+                    const actualOOPForService = Math.min(oopContribution, remainingOOPForService);
+                    
+                    let actualClientCostForService = 0;
+                    if (benefits.deductibleCountsTowardOOP) {
+                        actualClientCostForService = Math.min(deductiblePortionForService + coinsurancePortionForService, actualOOPForService);
+                    } else {
+                        actualClientCostForService = deductiblePortionForService + Math.min(coinsurancePortionForService, actualOOPForService);
+                    }
+                    
+                    totalDailyResponsibility += actualClientCostForService;
+                    runningOOPMet = tempOOPMet + actualOOPForService;
+                });
+                
+                // Reset for second pass - day by day calculation
+                runningDeductibleMet = deductibleMet;
+                runningOOPMet = oopMet;
                 
                 selectedServices.forEach(service => {
                     const dailyRate = parseFloat(service.dailyRate);
                     const serviceDays = parseInt(service.days);
+                    const serviceTotal = dailyRate * serviceDays;
+                    
+                    // Calculate client percentage for this entire service
+                    let tempDeductibleMet = runningDeductibleMet;
+                    let tempOOPMet = runningOOPMet;
+                    
+                    const remainingDeductibleForService = Math.max(0, deductible - tempDeductibleMet);
+                    const deductiblePortionForService = Math.min(serviceTotal, remainingDeductibleForService);
+                    
+                    const amountAfterDeductible = serviceTotal - deductiblePortionForService;
+                    const coinsurancePortionForService = amountAfterDeductible * (coinsurance / 100);
+                    
+                    let oopContribution = 0;
+                    if (benefits.deductibleCountsTowardOOP) {
+                        oopContribution = deductiblePortionForService + coinsurancePortionForService;
+                    } else {
+                        oopContribution = coinsurancePortionForService;
+                    }
+                    
+                    const remainingOOPForService = Math.max(0, oopMax - tempOOPMet);
+                    const actualOOPForService = Math.min(oopContribution, remainingOOPForService);
+                    
+                    let actualClientCostForService = 0;
+                    if (benefits.deductibleCountsTowardOOP) {
+                        actualClientCostForService = Math.min(deductiblePortionForService + coinsurancePortionForService, actualOOPForService);
+                    } else {
+                        actualClientCostForService = deductiblePortionForService + Math.min(coinsurancePortionForService, actualOOPForService);
+                    }
+                    
+                    const clientPercentageForService = serviceTotal > 0 ? (actualClientCostForService / serviceTotal * 100) : 0;
+                    const dailyClientCost = dailyRate * (clientPercentageForService / 100);
                     
                     for (let day = 1; day <= serviceDays; day++) {
-                        let dailyClientCost = 0;
-                        let dailyOOPContribution = 0;
                         let phase = '';
+                        let currentDayClientCost = dailyClientCost;
                         
-                        // Check if deductible is still active
+                        // Determine phase
                         if (runningDeductibleMet < deductible) {
-                            // Client pays 100% (deductible phase)
-                            dailyClientCost = dailyRate;
-                            runningDeductibleMet += dailyRate;
-                            phase = 'Deductible';
-                            
-                            if (benefits.deductibleCountsTowardOOP) {
-                                dailyOOPContribution = dailyRate;
-                                runningOOPMet += dailyRate;
+                            const dailyDeductibleAmount = Math.min(dailyRate, deductible - runningDeductibleMet);
+                            if (dailyDeductibleAmount > 0) {
+                                phase = `Deductible (${clientPercentageForService.toFixed(1)}% of service)`;
+                                runningDeductibleMet += dailyDeductibleAmount;
+                                
+                                if (benefits.deductibleCountsTowardOOP) {
+                                    runningOOPMet += dailyDeductibleAmount;
+                                }
                             }
                         } else {
-                            // Client pays coinsurance
-                            dailyClientCost = dailyRate * (coinsurance / 100);
                             phase = `${coinsurance}% Coinsurance`;
-                            dailyOOPContribution = dailyClientCost;
-                            runningOOPMet += dailyClientCost;
+                            const dailyCoinsurance = dailyRate * (coinsurance / 100);
+                            runningOOPMet += dailyCoinsurance;
                         }
                         
                         // Check if OOP max is reached
-                        if (runningOOPMet >= oopMax && insuranceAt100Day === null) {
-                            insuranceAt100Day = currentDay;
-                            phase += ' → 100% Coverage Starts!';
+                        if (runningOOPMet >= oopMax) {
+                            if (insuranceAt100Day === null) {
+                                insuranceAt100Day = currentDay;
+                            }
+                            phase += ' → 100% Coverage!';
+                            currentDayClientCost = 0;
                         }
                         
                         dayByDayProgression.push({
@@ -221,18 +295,14 @@
                             service: service.name,
                             serviceDay: day,
                             phase: phase,
-                            dailyClientCost: Math.min(dailyClientCost, Math.max(0, oopMax - (runningOOPMet - dailyOOPContribution))),
+                            dailyClientCost: currentDayClientCost,
+                            dailyClientPercentage: currentDayClientCost > 0 ? (currentDayClientCost / dailyRate * 100) : 0,
                             deductibleMet: Math.min(runningDeductibleMet, deductible),
                             oopMet: Math.min(runningOOPMet, oopMax),
                             insuranceCoversRest: runningOOPMet >= oopMax
                         });
                         
                         currentDay++;
-                        
-                        // If OOP max reached, client pays $0 for remaining days
-                        if (runningOOPMet >= oopMax) {
-                            break;
-                        }
                     }
                 });
 
@@ -566,7 +636,7 @@
                                                     <div className="text-lg font-semibold">
                                                         {calculation.dayByDayProgression.filter(d => d.phase.includes('Deductible')).length} days
                                                     </div>
-                                                    <div className="text-xs text-purple-200">Client pays 100%</div>
+                                                    <div className="text-xs text-purple-200">Client pays % of service cost</div>
                                                 </div>
                                                 <div className="bg-white/10 rounded p-3">
                                                     <div className="text-purple-100">Coinsurance Phase</div>
