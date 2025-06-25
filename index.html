@@ -175,7 +175,7 @@
                 const newRemainingDeductible = Math.max(0, deductible - newDeductibleMet);
                 const newRemainingOOP = Math.max(0, oopMax - newOOPMet);
 
-                // Calculate day-by-day progression to 100% coverage (corrected deductible logic)
+                // Calculate day-by-day progression based on CLIENT'S ACTUAL PAYMENTS
                 let dayByDayProgression = [];
                 let runningDeductibleMet = deductibleMet;
                 let runningOOPMet = oopMet;
@@ -185,9 +185,9 @@
                 selectedServices.forEach(service => {
                     const dailyRate = parseFloat(service.dailyRate);
                     const serviceDays = parseInt(service.days);
+                    const serviceTotal = dailyRate * serviceDays;
                     
                     // Calculate the client's percentage responsibility for this entire service
-                    const serviceTotal = dailyRate * serviceDays;
                     let tempDeductibleMet = runningDeductibleMet;
                     let tempOOPMet = runningOOPMet;
                     
@@ -215,28 +215,27 @@
                     
                     const clientPercentageForService = serviceTotal > 0 ? (actualClientCostForService / serviceTotal * 100) : 0;
                     
-                    // Now process day by day for this service
+                    // Process day by day based on CLIENT'S ACTUAL PAYMENTS
                     for (let day = 1; day <= serviceDays; day++) {
                         let phase = '';
                         let dailyClientCost = 0;
                         let dailyClientPercentage = 0;
+                        let deductibleProgress = 0;
                         
-                        // Check if deductible is still active - FULL daily rate applies to deductible
+                        // Check if deductible is still active
                         if (runningDeductibleMet < deductible) {
-                            // DEDUCTIBLE PHASE: Full daily rate goes toward deductible satisfaction
-                            const dailyDeductibleAmount = Math.min(dailyRate, deductible - runningDeductibleMet);
-                            runningDeductibleMet += dailyDeductibleAmount;
-                            
-                            // But client only pays their percentage of the service
+                            // DEDUCTIBLE PHASE: Client pays their percentage, deductible advances by that amount
                             dailyClientCost = dailyRate * (clientPercentageForService / 100);
                             dailyClientPercentage = clientPercentageForService;
-                            phase = `Deductible (${clientPercentageForService.toFixed(1)}% of service)`;
+                            deductibleProgress = dailyClientCost; // Only what client actually pays advances deductible
+                            runningDeductibleMet += deductibleProgress;
+                            phase = `Deductible (${clientPercentageForService.toFixed(1)}% payment)`;
                             
                             if (benefits.deductibleCountsTowardOOP) {
-                                runningOOPMet += dailyDeductibleAmount;
+                                runningOOPMet += deductibleProgress;
                             }
                         } else {
-                            // COINSURANCE PHASE: Only coinsurance amount applies
+                            // COINSURANCE PHASE
                             const dailyCoinsurance = dailyRate * (coinsurance / 100);
                             dailyClientCost = dailyCoinsurance;
                             dailyClientPercentage = coinsurance;
@@ -270,25 +269,53 @@
                     }
                 });
 
-                // Calculate service-by-service breakdown with proper percentage per day
+                // Calculate service-by-service breakdown with realistic day calculations
                 const serviceBreakdown = [];
                 let runningDeductible = remainingDeductible;
                 
                 selectedServices.forEach((service, index) => {
                     const dailyRate = parseFloat(service.dailyRate);
                     const totalDays = parseInt(service.days);
+                    const serviceTotal = dailyRate * totalDays;
                     
+                    // Calculate client's percentage responsibility for this service
+                    let tempDeductible = runningDeductible;
+                    const deductiblePortionForService = Math.min(serviceTotal, tempDeductible);
+                    const amountAfterDeductible = serviceTotal - deductiblePortionForService;
+                    const coinsurancePortionForService = amountAfterDeductible * (coinsurance / 100);
+                    
+                    let oopContribution = 0;
+                    if (benefits.deductibleCountsTowardOOP) {
+                        oopContribution = deductiblePortionForService + coinsurancePortionForService;
+                    } else {
+                        oopContribution = coinsurancePortionForService;
+                    }
+                    
+                    const remainingOOPForService = Math.max(0, oopMax - oopMet);
+                    const actualOOPForService = Math.min(oopContribution, remainingOOPForService);
+                    
+                    let actualClientCostForService = 0;
+                    if (benefits.deductibleCountsTowardOOP) {
+                        actualClientCostForService = Math.min(deductiblePortionForService + coinsurancePortionForService, actualOOPForService);
+                    } else {
+                        actualClientCostForService = deductiblePortionForService + Math.min(coinsurancePortionForService, actualOOPForService);
+                    }
+                    
+                    const clientPercentage = serviceTotal > 0 ? (actualClientCostForService / serviceTotal * 100) : 0;
+                    
+                    // Calculate realistic days based on client payment percentage
                     let deductibleDays = 0;
                     let coinsuranceDays = 0;
                     let deductibleAmount = 0;
                     let coinsuranceAmount = 0;
                     
                     if (runningDeductible > 0) {
-                        // Some days will be at 100% (deductible phase)
-                        const deductibleNeededForService = Math.min(runningDeductible, service.totalCost);
-                        deductibleDays = Math.ceil(deductibleNeededForService / dailyRate);
-                        deductibleDays = Math.min(deductibleDays, totalDays);
-                        deductibleAmount = deductibleDays * dailyRate;
+                        // Deductible phase: Calculate days based on client's actual payment percentage
+                        const clientDailyPayment = dailyRate * (clientPercentage / 100);
+                        if (clientDailyPayment > 0) {
+                            deductibleDays = Math.min(totalDays, Math.ceil(runningDeductible / clientDailyPayment));
+                            deductibleAmount = Math.min(runningDeductible, deductibleDays * clientDailyPayment);
+                        }
                         
                         runningDeductible = Math.max(0, runningDeductible - deductibleAmount);
                     }
@@ -301,7 +328,7 @@
                     }
                     
                     const totalClientCostForService = deductibleAmount + coinsuranceAmount;
-                    const insuranceAmountForService = service.totalCost - totalClientCostForService;
+                    const insuranceAmountForService = serviceTotal - totalClientCostForService;
                     
                     serviceBreakdown.push({
                         ...service,
@@ -311,7 +338,9 @@
                         coinsuranceAmount: coinsuranceAmount,
                         clientTotalForService: totalClientCostForService,
                         insuranceAmountForService: insuranceAmountForService,
-                        clientPercentage: service.totalCost > 0 ? (totalClientCostForService / service.totalCost * 100) : 0
+                        clientPercentage: clientPercentage,
+                        deductibleClientPercentage: clientPercentage, // Client's actual payment percentage during deductible
+                        freeDays: totalDays - deductibleDays - coinsuranceDays // Days where insurance pays 100%
                     });
                 });
 
@@ -600,7 +629,7 @@
                                                     <div className="text-lg font-semibold">
                                                         {calculation.dayByDayProgression.filter(d => d.phase.includes('Deductible')).length} days
                                                     </div>
-                                                    <div className="text-xs text-purple-200">Client pays % of service cost</div>
+                                                    <div className="text-xs text-purple-200">Client pays their % of service cost</div>
                                                 </div>
                                                 <div className="bg-white/10 rounded p-3">
                                                     <div className="text-purple-100">Coinsurance Phase</div>
@@ -677,6 +706,18 @@
                                                         </div>
                                                     </div>
                                                 )}
+                                                
+                                                <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                                                    <div className="text-sm text-amber-800">
+                                                        <div className="font-semibold mb-2">💡 Important Note:</div>
+                                                        <div className="space-y-1 text-xs">
+                                                            <div>• During deductible phase: Client pays their percentage, deductible advances by that amount</div>
+                                                            <div>• If client pays less than 100%, deductible takes longer to satisfy</div>
+                                                            <div>• This delays when insurance starts paying 100%</div>
+                                                            <div>• Payment plans during deductible phase extend timeline to full coverage</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                         <div className="bg-white rounded-lg shadow-sm p-6">
@@ -708,7 +749,7 @@
                                                                     {service.deductibleDays > 0 && (
                                                                         <div className="bg-red-100 p-2 rounded">
                                                                             <div className="font-semibold text-red-800">Deductible Phase:</div>
-                                                                            <div>• {service.deductibleDays} days @ 100%</div>
+                                                                            <div>• {service.deductibleDays} days @ {service.deductibleClientPercentage.toFixed(1)}%</div>
                                                                             <div>• ${service.deductibleAmount.toLocaleString()}</div>
                                                                         </div>
                                                                     )}
@@ -717,6 +758,13 @@
                                                                             <div className="font-semibold text-orange-800">Coinsurance Phase:</div>
                                                                             <div>• {service.coinsuranceDays} days @ {benefits.coinsurance}%</div>
                                                                             <div>• ${service.coinsuranceAmount.toLocaleString()}</div>
+                                                                        </div>
+                                                                    )}
+                                                                    {service.freeDays > 0 && (
+                                                                        <div className="bg-green-100 p-2 rounded">
+                                                                            <div className="font-semibold text-green-800">100% Coverage:</div>
+                                                                            <div>• {service.freeDays} days @ 0%</div>
+                                                                            <div>• $0</div>
                                                                         </div>
                                                                     )}
                                                                     <div className="pt-2 border-t border-red-300">
