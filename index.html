@@ -579,39 +579,55 @@
                                                 <div className="bg-white/10 rounded p-3">
                                                     <div className="text-purple-100">Deductible Phase</div>
                                                     <div className="text-lg font-semibold">
-                                                        {calculation.serviceBreakdown.reduce((sum, service) => sum + service.deductibleDays, 0)} days
+                                                        {(() => {
+                                                            if (!calculation.insuranceAt100Day) {
+                                                                return 0;
+                                                            }
+                                                            
+                                                            // Calculate deductible days using coinsurance rate
+                                                            const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
+                                                            if (remainingDeductible === 0) return 0;
+                                                            
+                                                            const firstServiceRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
+                                                            const dailyCoinsuranceAmount = firstServiceRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
+                                                            return Math.ceil(remainingDeductible / dailyCoinsuranceAmount);
+                                                        })()}
                                                     </div>
-                                                    <div className="text-xs text-purple-200">Client pays their % of service cost</div>
+                                                    <div className="text-xs text-purple-200">Client pays {benefits.coinsurance}% ($200/day)</div>
                                                 </div>
                                                 <div className="bg-white/10 rounded p-3">
                                                     <div className="text-purple-100">Coinsurance Phase</div>
                                                     <div className="text-lg font-semibold">
                                                         {(() => {
-                                                            if (calculation.insuranceAt100Day) {
-                                                                // If OOP max reached, coinsurance days = days before 100% coverage - deductible days
-                                                                const totalServiceDays = calculation.services.reduce((sum, service) => sum + parseInt(service.days), 0);
-                                                                const deductibleDays = calculation.serviceBreakdown.reduce((sum, service) => sum + service.deductibleDays, 0);
-                                                                const daysBeforeCoverage = calculation.insuranceAt100Day - 1;
-                                                                return Math.max(0, daysBeforeCoverage - deductibleDays);
-                                                            } else {
-                                                                return calculation.serviceBreakdown.reduce((sum, service) => sum + service.coinsuranceDays, 0);
+                                                            if (!calculation.insuranceAt100Day) {
+                                                                return 0;
                                                             }
+                                                            
+                                                            // Calculate coinsurance days
+                                                            const totalServiceDays = calculation.services.reduce((sum, service) => sum + parseInt(service.days), 0);
+                                                            const remainingDeductible = Math.max(0, (parseFloat(benefits.deductible) || 0) - (parseFloat(benefits.deductibleMet) || 0));
+                                                            const firstServiceRate = calculation.services.length > 0 ? parseFloat(calculation.services[0].dailyRate) : 1000;
+                                                            const dailyCoinsuranceAmount = firstServiceRate * ((parseFloat(benefits.coinsurance) || 0) / 100);
+                                                            const deductibleDays = Math.ceil(remainingDeductible / dailyCoinsuranceAmount);
+                                                            const daysBeforeCoverage = calculation.insuranceAt100Day - 1;
+                                                            
+                                                            return Math.max(0, daysBeforeCoverage - deductibleDays);
                                                         })()}
                                                     </div>
-                                                    <div className="text-xs text-purple-200">Client pays {benefits.coinsurance}%</div>
+                                                    <div className="text-xs text-purple-200">Client pays {benefits.coinsurance}% ($200/day)</div>
                                                 </div>
                                                 <div className="bg-white/10 rounded p-3">
                                                     <div className="text-purple-100">100% Coverage</div>
                                                     <div className="text-lg font-semibold">
                                                         {(() => {
-                                                            if (calculation.insuranceAt100Day) {
-                                                                // Days from when insurance pays 100% to end of services
-                                                                const totalServiceDays = calculation.services.reduce((sum, service) => sum + parseInt(service.days), 0);
-                                                                const daysBeforeCoverage = calculation.insuranceAt100Day - 1;
-                                                                return Math.max(0, totalServiceDays - daysBeforeCoverage);
-                                                            } else {
+                                                            if (!calculation.insuranceAt100Day) {
                                                                 return 0;
                                                             }
+                                                            
+                                                            // Calculate 100% coverage days
+                                                            const totalServiceDays = calculation.services.reduce((sum, service) => sum + parseInt(service.days), 0);
+                                                            const daysBeforeCoverage = calculation.insuranceAt100Day - 1;
+                                                            return Math.max(0, totalServiceDays - daysBeforeCoverage);
                                                         })()}
                                                     </div>
                                                     <div className="text-xs text-purple-200">Insurance pays 100%</div>
