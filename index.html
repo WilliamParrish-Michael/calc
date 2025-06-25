@@ -128,24 +128,24 @@
                     return;
                 }
 
+                // 1. BASIC CALCULATIONS
                 const deductible = parseFloat(benefits.deductible) || 0;
                 const deductibleMet = parseFloat(benefits.deductibleMet) || 0;
                 const oopMax = parseFloat(benefits.oopMax) || 0;
                 const oopMet = parseFloat(benefits.oopMet) || 0;
                 const coinsurance = parseFloat(benefits.coinsurance) || 0;
 
-                let totalProviderCharges = selectedServices.reduce((sum, service) => sum + service.totalCost, 0);
-                let allowedAmount = totalProviderCharges;
+                const totalProviderCharges = selectedServices.reduce((sum, service) => sum + service.totalCost, 0);
+                const allowedAmount = totalProviderCharges;
                 
                 const remainingDeductible = Math.max(0, deductible - deductibleMet);
                 const remainingOOP = Math.max(0, oopMax - oopMet);
                 
-                // Calculate deductible responsibility
+                // 2. CLIENT RESPONSIBILITY CALCULATION
                 const deductibleResponsibility = Math.min(allowedAmount, remainingDeductible);
                 const amountAfterDeductible = Math.max(0, allowedAmount - deductibleResponsibility);
                 const coinsuranceResponsibility = amountAfterDeductible * (coinsurance / 100);
                 
-                // Calculate OOP tracking
                 let oopApplicableAmount = 0;
                 if (benefits.deductibleCountsTowardOOP) {
                     oopApplicableAmount = deductibleResponsibility + coinsuranceResponsibility;
@@ -153,7 +153,6 @@
                     oopApplicableAmount = coinsuranceResponsibility;
                 }
                 
-                // Apply OOP max cap
                 const actualOOPAmount = Math.min(oopApplicableAmount, remainingOOP);
                 
                 let actualDeductiblePaid, actualCoinsurancePaid;
@@ -169,163 +168,62 @@
                 const totalClientCost = actualDeductiblePaid + actualCoinsurancePaid;
                 const insurancePays = allowedAmount - totalClientCost;
 
-                // Calculate new remaining amounts after this service
-                const newDeductibleMet = deductibleMet + actualDeductiblePaid;
-                const newOOPMet = oopMet + actualOOPAmount;
-                const newRemainingDeductible = Math.max(0, deductible - newDeductibleMet);
-                const newRemainingOOP = Math.max(0, oopMax - newOOPMet);
-
-                // Calculate day-by-day progression based on CLIENT'S ACTUAL PAYMENTS
-                let dayByDayProgression = [];
-                let runningDeductibleMet = deductibleMet;
-                let runningOOPMet = oopMet;
-                let currentDay = 1;
-                let insuranceAt100Day = null;
-                
-                selectedServices.forEach(service => {
-                    const dailyRate = parseFloat(service.dailyRate);
-                    const serviceDays = parseInt(service.days);
-                    const serviceTotal = dailyRate * serviceDays;
-                    
-                    // Calculate the client's percentage responsibility for this entire service
-                    let tempDeductibleMet = runningDeductibleMet;
-                    let tempOOPMet = runningOOPMet;
-                    
-                    const remainingDeductibleForService = Math.max(0, deductible - tempDeductibleMet);
-                    const deductiblePortionForService = Math.min(serviceTotal, remainingDeductibleForService);
-                    const amountAfterDeductible = serviceTotal - deductiblePortionForService;
-                    const coinsurancePortionForService = amountAfterDeductible * (coinsurance / 100);
-                    
-                    let oopContribution = 0;
-                    if (benefits.deductibleCountsTowardOOP) {
-                        oopContribution = deductiblePortionForService + coinsurancePortionForService;
-                    } else {
-                        oopContribution = coinsurancePortionForService;
-                    }
-                    
-                    const remainingOOPForService = Math.max(0, oopMax - tempOOPMet);
-                    const actualOOPForService = Math.min(oopContribution, remainingOOPForService);
-                    
-                    let actualClientCostForService = 0;
-                    if (benefits.deductibleCountsTowardOOP) {
-                        actualClientCostForService = Math.min(deductiblePortionForService + coinsurancePortionForService, actualOOPForService);
-                    } else {
-                        actualClientCostForService = deductiblePortionForService + Math.min(coinsurancePortionForService, actualOOPForService);
-                    }
-                    
-                    const clientPercentageForService = serviceTotal > 0 ? (actualClientCostForService / serviceTotal * 100) : 0;
-                    
-                    // Process day by day based on CLIENT'S ACTUAL PAYMENTS
-                    for (let day = 1; day <= serviceDays; day++) {
-                        let phase = '';
-                        let dailyClientCost = 0;
-                        let dailyClientPercentage = 0;
-                        let deductibleProgress = 0;
-                        
-                        // Check if deductible is still active
-                        if (runningDeductibleMet < deductible) {
-                            // DEDUCTIBLE PHASE: Client pays their percentage, deductible advances by that amount
-                            dailyClientCost = dailyRate * (clientPercentageForService / 100);
-                            dailyClientPercentage = clientPercentageForService;
-                            deductibleProgress = dailyClientCost; // Only what client actually pays advances deductible
-                            runningDeductibleMet += deductibleProgress;
-                            phase = `Deductible (${clientPercentageForService.toFixed(1)}% payment)`;
-                            
-                            if (benefits.deductibleCountsTowardOOP) {
-                                runningOOPMet += deductibleProgress;
-                            }
-                        } else {
-                            // COINSURANCE PHASE
-                            const dailyCoinsurance = dailyRate * (coinsurance / 100);
-                            dailyClientCost = dailyCoinsurance;
-                            dailyClientPercentage = coinsurance;
-                            phase = `${coinsurance}% Coinsurance`;
-                            runningOOPMet += dailyCoinsurance;
-                        }
-                        
-                        // Check if OOP max is reached
-                        if (runningOOPMet >= oopMax) {
-                            if (insuranceAt100Day === null) {
-                                insuranceAt100Day = currentDay;
-                            }
-                            phase += ' → 100% Coverage!';
-                            dailyClientCost = 0;
-                            dailyClientPercentage = 0;
-                        }
-                        
-                        dayByDayProgression.push({
-                            day: currentDay,
-                            service: service.name,
-                            serviceDay: day,
-                            phase: phase,
-                            dailyClientCost: dailyClientCost,
-                            dailyClientPercentage: dailyClientPercentage,
-                            deductibleMet: Math.min(runningDeductibleMet, deductible),
-                            oopMet: Math.min(runningOOPMet, oopMax),
-                            insuranceCoversRest: runningOOPMet >= oopMax
-                        });
-                        
-                        currentDay++;
-                    }
-                });
-
-                // Calculate service-by-service breakdown with realistic day calculations
+                // 3. SERVICE-BY-SERVICE BREAKDOWN
                 const serviceBreakdown = [];
                 let runningDeductible = remainingDeductible;
+                let runningOOP = remainingOOP;
                 
                 selectedServices.forEach((service, index) => {
                     const dailyRate = parseFloat(service.dailyRate);
                     const totalDays = parseInt(service.days);
-                    const serviceTotal = dailyRate * totalDays;
+                    const serviceTotal = service.totalCost;
                     
-                    // Calculate client's percentage responsibility for this service
-                    let tempDeductible = runningDeductible;
-                    const deductiblePortionForService = Math.min(serviceTotal, tempDeductible);
-                    const amountAfterDeductible = serviceTotal - deductiblePortionForService;
-                    const coinsurancePortionForService = amountAfterDeductible * (coinsurance / 100);
+                    // Calculate client percentage for each service
+                    const serviceDeductible = Math.min(serviceTotal, runningDeductible);
+                    const serviceAfterDeductible = serviceTotal - serviceDeductible;
+                    const serviceCoinsurance = serviceAfterDeductible * (coinsurance / 100);
                     
-                    let oopContribution = 0;
+                    let serviceOOPContribution = 0;
                     if (benefits.deductibleCountsTowardOOP) {
-                        oopContribution = deductiblePortionForService + coinsurancePortionForService;
+                        serviceOOPContribution = serviceDeductible + serviceCoinsurance;
                     } else {
-                        oopContribution = coinsurancePortionForService;
+                        serviceOOPContribution = serviceCoinsurance;
                     }
                     
-                    const remainingOOPForService = Math.max(0, oopMax - oopMet);
-                    const actualOOPForService = Math.min(oopContribution, remainingOOPForService);
+                    const serviceOOPCapped = Math.min(serviceOOPContribution, runningOOP);
                     
-                    let actualClientCostForService = 0;
+                    let serviceClientCost = 0;
                     if (benefits.deductibleCountsTowardOOP) {
-                        actualClientCostForService = Math.min(deductiblePortionForService + coinsurancePortionForService, actualOOPForService);
+                        serviceClientCost = Math.min(serviceDeductible + serviceCoinsurance, serviceOOPCapped);
                     } else {
-                        actualClientCostForService = deductiblePortionForService + Math.min(coinsurancePortionForService, actualOOPForService);
+                        serviceClientCost = serviceDeductible + Math.min(serviceCoinsurance, serviceOOPCapped);
                     }
                     
-                    const clientPercentage = serviceTotal > 0 ? (actualClientCostForService / serviceTotal * 100) : 0;
+                    const clientPercentage = serviceTotal > 0 ? (serviceClientCost / serviceTotal * 100) : 0;
                     
-                    // Calculate realistic days based on client payment percentage
+                    // Calculate days based on client payment percentage
                     let deductibleDays = 0;
-                    let coinsuranceDays = 0;
                     let deductibleAmount = 0;
+                    let coinsuranceDays = 0;
                     let coinsuranceAmount = 0;
+                    let freeDays = 0;
                     
                     if (runningDeductible > 0) {
-                        // Deductible phase: Calculate days based on client's actual payment percentage
                         const clientDailyPayment = dailyRate * (clientPercentage / 100);
                         if (clientDailyPayment > 0) {
                             deductibleDays = Math.min(totalDays, Math.ceil(runningDeductible / clientDailyPayment));
                             deductibleAmount = Math.min(runningDeductible, deductibleDays * clientDailyPayment);
                         }
-                        
                         runningDeductible = Math.max(0, runningDeductible - deductibleAmount);
                     }
                     
-                    // Remaining days are at coinsurance rate
                     const remainingDaysInService = totalDays - deductibleDays;
                     if (remainingDaysInService > 0) {
                         coinsuranceDays = remainingDaysInService;
                         coinsuranceAmount = coinsuranceDays * dailyRate * (coinsurance / 100);
                     }
+                    
+                    freeDays = totalDays - deductibleDays - coinsuranceDays;
                     
                     const totalClientCostForService = deductibleAmount + coinsuranceAmount;
                     const insuranceAmountForService = serviceTotal - totalClientCostForService;
@@ -339,10 +237,65 @@
                         clientTotalForService: totalClientCostForService,
                         insuranceAmountForService: insuranceAmountForService,
                         clientPercentage: clientPercentage,
-                        deductibleClientPercentage: clientPercentage, // Client's actual payment percentage during deductible
-                        freeDays: totalDays - deductibleDays - coinsuranceDays // Days where insurance pays 100%
+                        deductibleClientPercentage: clientPercentage,
+                        freeDays: freeDays
                     });
+                    
+                    if (benefits.deductibleCountsTowardOOP) {
+                        runningOOP = Math.max(0, runningOOP - (deductibleAmount + coinsuranceAmount));
+                    } else {
+                        runningOOP = Math.max(0, runningOOP - coinsuranceAmount);
+                    }
                 });
+
+                // 4. Calculate Insurance At 100% Day
+                let insuranceAt100Day = null;
+                let runningDeductibleForCalc = deductibleMet;
+                let runningOOPForCalc = oopMet;
+                let dayCounter = 1;
+                
+                for (const service of selectedServices) {
+                    const dailyRate = parseFloat(service.dailyRate);
+                    const serviceDays = parseInt(service.days);
+                    
+                    const serviceBreakdownItem = serviceBreakdown.find(sb => sb.name === service.name);
+                    const clientPercentageForService = serviceBreakdownItem ? serviceBreakdownItem.clientPercentage : 0;
+                    
+                    for (let day = 1; day <= serviceDays; day++) {
+                        if (runningDeductibleForCalc < deductible) {
+                            const dailyClientPayment = dailyRate * (clientPercentageForService / 100);
+                            runningDeductibleForCalc += dailyClientPayment;
+                            
+                            if (benefits.deductibleCountsTowardOOP) {
+                                runningOOPForCalc += dailyClientPayment;
+                            }
+                        } else {
+                            const dailyCoinsurance = dailyRate * (coinsurance / 100);
+                            runningOOPForCalc += dailyCoinsurance;
+                        }
+                        
+                        if (runningOOPForCalc >= oopMax && insuranceAt100Day === null) {
+                            insuranceAt100Day = dayCounter;
+                            break;
+                        }
+                        
+                        dayCounter++;
+                    }
+                    
+                    if (insuranceAt100Day !== null) break;
+                }
+
+                // 6. BENEFIT STATUS AFTER SERVICE
+                const newDeductibleMet = deductibleMet + actualDeductiblePaid;
+                const newRemainingDeductible = Math.max(0, deductible - newDeductibleMet);
+                
+                let newOOPMet = 0;
+                if (benefits.deductibleCountsTowardOOP) {
+                    newOOPMet = oopMet + actualDeductiblePaid + actualCoinsurancePaid;
+                } else {
+                    newOOPMet = oopMet + actualCoinsurancePaid;
+                }
+                const newRemainingOOP = Math.max(0, oopMax - newOOPMet);
 
                 setCalculation({
                     services: selectedServices,
@@ -408,19 +361,6 @@
                                                     placeholder="5000"
                                                 />
                                             </div>
-                                            
-                                            {calculation.insuranceAt100Day && (
-                                                <div className="mt-4 p-4 bg-white/20 rounded-lg">
-                                                    <div className="text-center">
-                                                        <div className="text-lg font-bold text-white">
-                                                            🎯 Key Insight: After Day {calculation.insuranceAt100Day}, client pays $0 for covered services!
-                                                        </div>
-                                                        <div className="text-sm text-purple-100 mt-1">
-                                                            Perfect time to schedule additional treatment or continuing care
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
                                             <div>
                                                 <label className="block text-sm font-medium text-gray-700 mb-1">Deductible Met ($)</label>
                                                 <input
@@ -658,80 +598,22 @@
                                                     <div className="text-xs text-purple-200">Insurance pays 100%</div>
                                                 </div>
                                             </div>
+                                            
+                                            {calculation.insuranceAt100Day && (
+                                                <div className="mt-4 p-4 bg-white/20 rounded-lg">
+                                                    <div className="text-center">
+                                                        <div className="text-lg font-bold text-white">
+                                                            🎯 Key Insight: After Day {calculation.insuranceAt100Day}, client pays $0 for covered services!
+                                                        </div>
+                                                        <div className="text-sm text-purple-100 mt-1">
+                                                            Perfect time to schedule additional treatment or continuing care
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
 
-                                        {/* Day-by-Day Timeline */}
-                                        {calculation.dayByDayProgression.length > 0 && (
-                                            <div className="bg-white rounded-lg shadow-sm p-6">
-                                                <h4 className="text-lg font-semibold text-gray-800 mb-4">📊 Day-by-Day Coverage Timeline</h4>
-                                                
-                                                <div className="space-y-2 max-h-96 overflow-y-auto">
-                                                    {calculation.dayByDayProgression.map((day, idx) => (
-                                                        <div 
-                                                            key={idx} 
-                                                            className={`flex items-center justify-between p-3 rounded-lg text-sm ${
-                                                                day.insuranceCoversRest 
-                                                                    ? 'bg-green-50 border border-green-200' 
-                                                                    : day.phase.includes('Deductible')
-                                                                    ? 'bg-red-50 border border-red-200'
-                                                                    : 'bg-orange-50 border border-orange-200'
-                                                            }`}
-                                                        >
-                                                            <div className="flex items-center space-x-3">
-                                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-                                                                    day.insuranceCoversRest 
-                                                                        ? 'bg-green-500 text-white' 
-                                                                        : day.phase.includes('Deductible')
-                                                                        ? 'bg-red-500 text-white'
-                                                                        : 'bg-orange-500 text-white'
-                                                                }`}>
-                                                                    {day.day}
-                                                                </div>
-                                                                <div>
-                                                                    <div className="font-medium">
-                                                                        {serviceInfo[day.service].name} - Day {day.serviceDay}
-                                                                    </div>
-                                                                    <div className="text-xs text-gray-600">{day.phase}</div>
-                                                                </div>
-                                                            </div>
-                                                            <div className="text-right">
-                                                                <div className={`font-bold ${
-                                                                    day.insuranceCoversRest ? 'text-green-600' : 'text-red-600'
-                                                                }`}>
-                                                                    {day.insuranceCoversRest ? '$0' : `${day.dailyClientCost.toLocaleString()}`}
-                                                                </div>
-                                                                <div className="text-xs text-gray-500">Client pays</div>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                
-                                                {calculation.insuranceAt100Day && (
-                                                    <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                                                        <div className="text-center">
-                                                            <div className="text-lg font-bold text-green-800">
-                                                                🎯 Key Insight: After Day {calculation.insuranceAt100Day}, client pays $0 for covered services!
-                                                            </div>
-                                                            <div className="text-sm text-green-700 mt-1">
-                                                                Perfect time to schedule additional treatment or continuing care
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                
-                                                <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
-                                                    <div className="text-sm text-amber-800">
-                                                        <div className="font-semibold mb-2">💡 Important Note:</div>
-                                                        <div className="space-y-1 text-xs">
-                                                            <div>• During deductible phase: Client pays their percentage, deductible advances by that amount</div>
-                                                            <div>• If client pays less than 100%, deductible takes longer to satisfy</div>
-                                                            <div>• This delays when insurance starts paying 100%</div>
-                                                            <div>• Payment plans during deductible phase extend timeline to full coverage</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
+                                        {/* Service-by-Service Breakdown */}
                                         <div className="bg-white rounded-lg shadow-sm p-6">
                                             <h4 className="text-lg font-semibold text-gray-800 mb-4">Service-by-Service Breakdown</h4>
                                             
@@ -859,7 +741,7 @@
                                                             <div className="font-medium mb-1">What This Covers:</div>
                                                             <div className="space-y-1 text-xs">
                                                                 <div>• Covers current service plus builds credit toward future services</div>
-                                                                <div>• Significantly reduces out-of-pocket maximum</div>
+                                                                <div>• Significantly reduces remaining out-of-pocket maximum</div>
                                                                 <div>• Balanced approach between current and future costs</div>
                                                                 <div>• Good option for clients likely to need more treatment</div>
                                                             </div>
