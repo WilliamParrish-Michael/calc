@@ -175,49 +175,49 @@
                 const newRemainingDeductible = Math.max(0, deductible - newDeductibleMet);
                 const newRemainingOOP = Math.max(0, oopMax - newOOPMet);
 
-                // Calculate service-by-service breakdown with proper day distribution
+                // Calculate service-by-service breakdown with proper percentage per day
                 const serviceBreakdown = [];
                 let runningDeductible = remainingDeductible;
-                let runningClientCost = totalClientCost;
                 
                 selectedServices.forEach((service, index) => {
                     const dailyRate = parseFloat(service.dailyRate);
+                    const totalDays = parseInt(service.days);
                     
-                    if (runningClientCost <= 0) {
-                        serviceBreakdown.push({
-                            ...service,
-                            clientPortion: 0,
-                            daysClientPays: 0,
-                            remainingDays: service.days,
-                            deductibleApplied: 0,
-                            coinsuranceApplied: 0,
-                            remainingClientCost: 0
-                        });
-                        return;
+                    let deductibleDays = 0;
+                    let coinsuranceDays = 0;
+                    let deductibleAmount = 0;
+                    let coinsuranceAmount = 0;
+                    
+                    if (runningDeductible > 0) {
+                        // Some days will be at 100% (deductible phase)
+                        const deductibleNeededForService = Math.min(runningDeductible, service.totalCost);
+                        deductibleDays = Math.ceil(deductibleNeededForService / dailyRate);
+                        deductibleDays = Math.min(deductibleDays, totalDays);
+                        deductibleAmount = deductibleDays * dailyRate;
+                        
+                        runningDeductible = Math.max(0, runningDeductible - deductibleAmount);
                     }
                     
-                    // Calculate how much client pays for this service
-                    const maxClientCostForService = Math.min(runningClientCost, service.totalCost);
-                    const daysClientPays = Math.min(service.days, Math.ceil(maxClientCostForService / dailyRate));
-                    const actualClientPortion = Math.min(daysClientPays * dailyRate, maxClientCostForService);
-                    const remainingDays = service.days - daysClientPays;
+                    // Remaining days are at coinsurance rate
+                    const remainingDaysInService = totalDays - deductibleDays;
+                    if (remainingDaysInService > 0) {
+                        coinsuranceDays = remainingDaysInService;
+                        coinsuranceAmount = coinsuranceDays * dailyRate * (coinsurance / 100);
+                    }
                     
-                    // Calculate deductible portion for this service
-                    const deductibleForService = Math.min(actualClientPortion, runningDeductible);
-                    const coinsuranceForService = actualClientPortion - deductibleForService;
+                    const totalClientCostForService = deductibleAmount + coinsuranceAmount;
+                    const insuranceAmountForService = service.totalCost - totalClientCostForService;
                     
                     serviceBreakdown.push({
                         ...service,
-                        clientPortion: actualClientPortion,
-                        daysClientPays: daysClientPays,
-                        remainingDays: remainingDays,
-                        deductibleApplied: deductibleForService,
-                        coinsuranceApplied: coinsuranceForService,
-                        remainingClientCost: Math.max(0, runningClientCost - actualClientPortion)
+                        deductibleDays: deductibleDays,
+                        deductibleAmount: deductibleAmount,
+                        coinsuranceDays: coinsuranceDays,
+                        coinsuranceAmount: coinsuranceAmount,
+                        clientTotalForService: totalClientCostForService,
+                        insuranceAmountForService: insuranceAmountForService,
+                        clientPercentage: service.totalCost > 0 ? (totalClientCostForService / service.totalCost * 100) : 0
                     });
-                    
-                    runningDeductible = Math.max(0, runningDeductible - deductibleForService);
-                    runningClientCost = Math.max(0, runningClientCost - actualClientPortion);
                 });
 
                 setCalculation({
@@ -476,61 +476,156 @@
                                                                 <h5 className="font-semibold text-gray-800">{serviceInfo[service.name].fullName}</h5>
                                                                 <p className="text-sm text-gray-600">
                                                                     {service.days} days @ ${service.dailyRate}/day = ${service.totalCost.toLocaleString()}
-                                                                    {service.deductibleApplied > 0 && (
-                                                                        <span className="text-red-600 ml-2">(Deductible: ${service.deductibleApplied.toLocaleString()})</span>
-                                                                    )}
+                                                                </p>
+                                                                <p className="text-xs text-blue-600 mt-1">
+                                                                    Client pays {service.clientPercentage.toFixed(1)}% of this service
                                                                 </p>
                                                             </div>
                                                             <div className="text-right">
-                                                                <div className="text-lg font-bold text-red-600">${service.clientPortion.toLocaleString()}</div>
-                                                                <div className="text-sm text-gray-600">Client pays</div>
+                                                                <div className="text-lg font-bold text-red-600">${service.clientTotalForService.toLocaleString()}</div>
+                                                                <div className="text-sm text-gray-600">Client total</div>
                                                             </div>
                                                         </div>
                                                         
                                                         <div className="grid grid-cols-2 gap-4 text-sm">
                                                             <div className="bg-red-50 p-3 rounded border border-red-200">
-                                                                <div className="font-medium text-red-700 mb-1">Client Responsibility</div>
+                                                                <div className="font-medium text-red-700 mb-2">Client Responsibility</div>
                                                                 <div className="space-y-1 text-xs">
-                                                                    <div>Days client pays: <span className="font-semibold">{service.daysClientPays}</span></div>
-                                                                    <div>Amount: <span className="font-semibold text-red-600">${service.clientPortion.toLocaleString()}</span></div>
-                                                                    {service.deductibleApplied > 0 && (
-                                                                        <div className="text-red-700">• Deductible: ${service.deductibleApplied.toLocaleString()}</div>
-                                                                    )}
-                                                                    {service.coinsuranceApplied > 0 && (
-                                                                        <div className="text-orange-700">• Coinsurance: ${service.coinsuranceApplied.toLocaleString()}</div>
-                                                                    )}
-                                                                    {service.remainingClientCost > 0 && (
-                                                                        <div className="text-blue-600 mt-2 pt-2 border-t border-red-200">
-                                                                            Remaining client cost: ${service.remainingClientCost.toLocaleString()}
+                                                                    {service.deductibleDays > 0 && (
+                                                                        <div className="bg-red-100 p-2 rounded">
+                                                                            <div className="font-semibold text-red-800">Deductible Phase:</div>
+                                                                            <div>• {service.deductibleDays} days @ 100%</div>
+                                                                            <div>• ${service.deductibleAmount.toLocaleString()}</div>
                                                                         </div>
                                                                     )}
+                                                                    {service.coinsuranceDays > 0 && (
+                                                                        <div className="bg-orange-100 p-2 rounded">
+                                                                            <div className="font-semibold text-orange-800">Coinsurance Phase:</div>
+                                                                            <div>• {service.coinsuranceDays} days @ {benefits.coinsurance}%</div>
+                                                                            <div>• ${service.coinsuranceAmount.toLocaleString()}</div>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="pt-2 border-t border-red-300">
+                                                                        <span className="font-semibold">Total: ${service.clientTotalForService.toLocaleString()}</span>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                             
                                                             <div className="bg-green-50 p-3 rounded border border-green-200">
-                                                                <div className="font-medium text-green-700 mb-1">Insurance Coverage</div>
+                                                                <div className="font-medium text-green-700 mb-2">Insurance Coverage</div>
                                                                 <div className="space-y-1 text-xs">
-                                                                    <div>Days covered: <span className="font-semibold">{service.remainingDays}</span></div>
-                                                                    <div>Amount: <span className="font-semibold text-green-600">${(service.totalCost - service.clientPortion).toLocaleString()}</span></div>
-                                                                    {service.remainingDays > 0 && (
-                                                                        <div className="text-green-600">• Insurance pays 100% for these days</div>
+                                                                    <div>Amount: <span className="font-semibold text-green-600">${service.insuranceAmountForService.toLocaleString()}</span></div>
+                                                                    {service.coinsuranceDays > 0 && (
+                                                                        <div>• {service.coinsuranceDays} days @ {100 - parseFloat(benefits.coinsurance)}%</div>
                                                                     )}
-                                                                    {service.remainingDays === 0 && (
-                                                                        <div className="text-gray-600">• No insurance coverage for this service</div>
+                                                                    {service.deductibleDays > 0 && service.coinsuranceDays === 0 && (
+                                                                        <div>• Remaining {service.days - service.deductibleDays} days @ 100%</div>
+                                                                    )}
+                                                                    {service.insuranceAmountForService === 0 && (
+                                                                        <div className="text-gray-600">• All deductible - no insurance payment</div>
                                                                     )}
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                        
-                                                        {idx < calculation.serviceBreakdown.length - 1 && service.remainingClientCost > 0 && (
-                                                            <div className="mt-3 p-2 bg-blue-50 rounded border border-blue-200">
-                                                                <div className="text-xs text-blue-700">
-                                                                    <span className="font-semibold">Next service impact:</span> ${service.remainingClientCost.toLocaleString()} will be applied to subsequent services
-                                                                </div>
-                                                            </div>
-                                                        )}
                                                     </div>
                                                 ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Payment Collection Scenarios */}
+                                        <div className="bg-white rounded-lg shadow-sm p-6">
+                                            <h4 className="text-lg font-semibold text-gray-800 mb-4">Payment Collection Scenarios</h4>
+                                            
+                                            <div className="space-y-4">
+                                                {/* Scenario 1 - Pay Remaining Deductible */}
+                                                <div className="border-2 border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div>
+                                                            <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-semibold mb-2">
+                                                                Scenario 1 - Conservative
+                                                            </span>
+                                                            <h5 className="font-semibold text-gray-800">Pay Remaining Deductible</h5>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-2xl font-bold text-gray-800">
+                                                                ${Math.min(calculation.currentStatus.remainingDeductible, calculation.totals.totalClientCost).toLocaleString()}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-sm text-gray-600 space-y-2">
+                                                        <div className="bg-gray-50 p-3 rounded">
+                                                            <div className="font-medium mb-1">What This Covers:</div>
+                                                            <div className="space-y-1 text-xs">
+                                                                <div>• Satisfies remaining deductible requirement</div>
+                                                                <div>• After this payment: Client pays only {benefits.coinsurance}% coinsurance</div>
+                                                                <div>• Future services much more affordable</div>
+                                                                <div>• Conservative option for budget-conscious clients</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Scenario 2 - Pay Half OOP Remaining */}
+                                                <div className="border-2 border-blue-200 rounded-lg p-4 hover:border-blue-400 transition-colors bg-blue-50">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div>
+                                                            <span className="inline-block px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold mb-2">
+                                                                Scenario 2 - Balanced
+                                                            </span>
+                                                            <h5 className="font-semibold text-gray-800">Pay Half of Remaining OOP Maximum</h5>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-2xl font-bold text-blue-700">
+                                                                ${Math.min(calculation.currentStatus.remainingOOP * 0.5, calculation.totals.totalClientCost).toLocaleString()}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-sm text-gray-600 space-y-2">
+                                                        <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                                                            <div className="font-medium mb-1">What This Covers:</div>
+                                                            <div className="space-y-1 text-xs">
+                                                                <div>• Covers current service plus builds credit toward future services</div>
+                                                                <div>• Significantly reduces out-of-pocket maximum</div>
+                                                                <div>• Balanced approach between current and future costs</div>
+                                                                <div>• Good option for clients likely to need more treatment</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Scenario 3 - Pay Full OOP Maximum */}
+                                                <div className="border-2 border-green-200 rounded-lg p-4 hover:border-green-400 transition-colors">
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div>
+                                                            <span className="inline-block px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-semibold mb-2">
+                                                                Scenario 3 - Maximum Value
+                                                            </span>
+                                                            <h5 className="font-semibold text-gray-800">Pay Full Remaining OOP Maximum</h5>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <div className="text-2xl font-bold text-green-700">
+                                                                ${calculation.currentStatus.remainingOOP.toLocaleString()}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-sm text-gray-600 space-y-2">
+                                                        <div className="bg-green-50 p-3 rounded border border-green-200">
+                                                            <div className="font-medium mb-1">What This Covers:</div>
+                                                            <div className="space-y-1 text-xs">
+                                                                <div>• Satisfies entire out-of-pocket maximum for the year</div>
+                                                                <div>• Insurance pays 100% of all covered services afterward</div>
+                                                                <div>• Maximum value for clients needing extensive treatment</div>
+                                                                <div>• Peace of mind - no more surprise medical bills</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="bg-white p-3 rounded border border-green-300">
+                                                            <div className="text-center">
+                                                                <div className="text-lg font-bold text-green-700">$0 Future Costs</div>
+                                                                <div className="text-xs text-green-600">All covered services FREE rest of year</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
 
