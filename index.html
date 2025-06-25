@@ -74,6 +74,11 @@
                 // Add validation
                 let validatedValue = value;
                 
+                // Prevent negative numbers
+                if (value && parseFloat(value) < 0) {
+                    validatedValue = '0';
+                }
+                
                 if (field === 'deductibleMet' || field === 'oopMet') {
                     const max = field === 'deductibleMet' ? parseFloat(benefits.deductible) || 0 : parseFloat(benefits.oopMax) || 0;
                     const numValue = parseFloat(value) || 0;
@@ -187,29 +192,61 @@
                 // SIMPLIFIED: Calculate when insurance pays 100% using user's formula
                 let daysUntil100Percent = null;
                 let runningDays = 0;
-                let remainingClientCost = totalClientCost;
+                let remainingToPayBeforeOOP = remainingOOP;
                 
+                // Track through services to find when OOP max is reached
                 for (let i = 0; i < selectedServices.length; i++) {
                     const service = selectedServices[i];
                     const dailyRate = parseFloat(service.dailyRate);
                     const serviceDays = parseInt(service.days);
                     
-                    // During deductible phase: client pays 100%
-                    // After deductible: client pays coinsurance%
-                    // We'll use coinsurance rate as approximation for simplicity
-                    const clientDailyRate = dailyRate * coinsuranceDecimal;
-                    
-                    const serviceClientCost = clientDailyRate * serviceDays;
-                    
-                    if (remainingClientCost <= serviceClientCost) {
-                        // Insurance will pay 100% during this service
-                        const daysInThisService = Math.ceil(remainingClientCost / clientDailyRate);
-                        daysUntil100Percent = runningDays + daysInThisService;
-                        break;
+                    // Calculate client's daily cost based on current benefit phase
+                    let clientDailyRate;
+                    if (remainingDeductible > 0) {
+                        // During deductible phase: client pays 100%
+                        clientDailyRate = dailyRate;
+                    } else {
+                        // After deductible: client pays coinsurance%
+                        clientDailyRate = dailyRate * coinsuranceDecimal;
                     }
                     
-                    remainingClientCost -= serviceClientCost;
-                    runningDays += serviceDays;
+                    // Check each day in this service
+                    for (let day = 1; day <= serviceDays; day++) {
+                        if (remainingToPayBeforeOOP <= 0) {
+                            // Already reached OOP max
+                            break;
+                        }
+                        
+                        // Apply daily cost
+                        if (remainingDeductible > 0) {
+                            const deductiblePortion = Math.min(dailyRate, remainingDeductible);
+                            remainingDeductible -= deductiblePortion;
+                            
+                            if (benefits.deductibleCountsTowardOOP) {
+                                remainingToPayBeforeOOP -= deductiblePortion;
+                            }
+                            
+                            // If deductible is satisfied, apply remaining as coinsurance
+                            if (remainingDeductible === 0 && deductiblePortion < dailyRate) {
+                                const coinsurancePortion = (dailyRate - deductiblePortion) * coinsuranceDecimal;
+                                remainingToPayBeforeOOP -= coinsurancePortion;
+                            }
+                        } else {
+                            // Pure coinsurance phase
+                            const coinsurancePortion = dailyRate * coinsuranceDecimal;
+                            remainingToPayBeforeOOP -= coinsurancePortion;
+                        }
+                        
+                        runningDays++;
+                        
+                        // Check if OOP max reached
+                        if (remainingToPayBeforeOOP <= 0 && daysUntil100Percent === null) {
+                            daysUntil100Percent = runningDays;
+                            break;
+                        }
+                    }
+                    
+                    if (daysUntil100Percent !== null) break;
                 }
 
                 // Benefit status after service
@@ -471,25 +508,45 @@
                                         </div>
 
                                         {/* When Does Insurance Pay 100%? */}
-                                        {calculation.daysUntil100Percent && (
-                                            <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-sm p-6 text-white">
-                                                <h3 className="text-lg font-semibold mb-4">📅 When Does Insurance Pay 100%?</h3>
-                                                <div className="text-center mb-4">
+                                        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-sm p-6 text-white">
+                                            <h3 className="text-lg font-semibold mb-4">📅 When Does Insurance Pay 100%?</h3>
+                                            {calculation.currentStatus.remainingOOP === 0 ? (
+                                                <div className="text-center">
+                                                    <div className="text-4xl font-bold mb-2">
+                                                        Already at 100%!
+                                                    </div>
+                                                    <p className="text-purple-100">OOP Maximum already reached</p>
+                                                    <div className="mt-3 bg-white/20 rounded-lg px-4 py-2 text-sm">
+                                                        <span className="font-semibold">✓ All covered services are FREE</span>
+                                                    </div>
+                                                </div>
+                                            ) : calculation.daysUntil100Percent ? (
+                                                <div className="text-center">
                                                     <div className="text-5xl font-bold mb-2">
                                                         Day {calculation.daysUntil100Percent}
                                                     </div>
                                                     <p className="text-purple-100">Insurance starts paying 100% of covered services</p>
                                                     <div className="mt-3 bg-white/20 rounded-lg px-4 py-2 text-sm">
-                                                        <span className="font-semibold">🎉 Out-of-Pocket Maximum Reached!</span>
+                                                        <span className="font-semibold">🎉 Out-of-Pocket Maximum will be reached!</span>
+                                                    </div>
+                                                    <div className="mt-4 p-4 bg-white/20 rounded-lg">
+                                                        <p className="text-center text-sm">
+                                                            After day {calculation.daysUntil100Percent}, all covered services are FREE for the rest of the year!
+                                                        </p>
                                                     </div>
                                                 </div>
-                                                <div className="p-4 bg-white/20 rounded-lg">
-                                                    <p className="text-center text-sm">
-                                                        After day {calculation.daysUntil100Percent}, all covered services are FREE for the rest of the year!
-                                                    </p>
+                                            ) : (
+                                                <div className="text-center">
+                                                    <div className="text-3xl font-bold mb-2">
+                                                        Not reached with current services
+                                                    </div>
+                                                    <p className="text-purple-100">Need more services to reach OOP maximum</p>
+                                                    <div className="mt-3 bg-white/20 rounded-lg px-4 py-2 text-sm">
+                                                        <span className="font-semibold">${calculation.currentStatus.remainingOOP.toLocaleString()} remaining to OOP max</span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
 
                                         {/* Payment Collection Scenarios */}
                                         <div className="bg-white rounded-lg shadow-sm p-6">
@@ -507,7 +564,7 @@
                                                         </div>
                                                         <div className="text-right">
                                                             <div className="text-2xl font-bold text-gray-800">
-                                                                ${Math.min(calculation.currentStatus.remainingDeductible, calculation.totals.totalClientCost).toLocaleString()}
+                                                                ${Math.min(calculation.currentStatus.remainingDeductible, calculation.currentStatus.remainingOOP, calculation.totals.totalClientCost).toLocaleString()}
                                                             </div>
                                                         </div>
                                                     </div>
