@@ -639,49 +639,21 @@
                                                                 {(() => {
                                                                     const paymentAmount = Math.min(calculation.currentStatus.remainingDeductible, calculation.totals.totalClientCost);
                                                                     
-                                                                    // Calculate what's left after this payment
-                                                                    let newRemainingDeductible = Math.max(0, calculation.currentStatus.remainingDeductible - paymentAmount);
-                                                                    let newRemainingOOP = calculation.currentStatus.remainingOOP;
+                                                                    // Calculate remaining client responsibility after this payment
+                                                                    const remainingClientResponsibility = Math.max(0, calculation.totals.totalClientCost - paymentAmount);
                                                                     
-                                                                    // Only reduce OOP if deductible counts
-                                                                    if (benefits.deductibleCountsTowardOOP) {
-                                                                        newRemainingOOP = Math.max(0, newRemainingOOP - paymentAmount);
-                                                                    }
-                                                                    
-                                                                    if (newRemainingOOP === 0) {
+                                                                    if (remainingClientResponsibility === 0) {
                                                                         return "Immediately after this payment!";
                                                                     }
                                                                     
-                                                                    // Calculate days needed
-                                                                    const avgDailyRate = calculation.totals.providerCharges / calculation.services.reduce((sum, s) => sum + s.days, 0);
-                                                                    const coinsuranceRate = (parseFloat(benefits.coinsurance) || 0) / 100;
-                                                                    const clientDailyCoinsurance = avgDailyRate * coinsuranceRate;
+                                                                    // Calculate average daily client cost
+                                                                    const totalDays = calculation.services.reduce((sum, s) => sum + s.days, 0);
+                                                                    const avgClientDailyRate = calculation.totals.totalClientCost / totalDays;
                                                                     
-                                                                    let totalDays = 0;
+                                                                    // Days needed = remaining responsibility / daily client rate
+                                                                    const daysNeeded = Math.ceil(remainingClientResponsibility / avgClientDailyRate);
                                                                     
-                                                                    // First, days to satisfy remaining deductible at 100% rate
-                                                                    if (newRemainingDeductible > 0) {
-                                                                        const deductibleDays = Math.ceil(newRemainingDeductible / avgDailyRate);
-                                                                        totalDays += deductibleDays;
-                                                                    }
-                                                                    
-                                                                    // Then calculate OOP days
-                                                                    if (!benefits.deductibleCountsTowardOOP) {
-                                                                        // If deductible doesn't count, need full OOP in coinsurance
-                                                                        if (newRemainingOOP > 0 && clientDailyCoinsurance > 0) {
-                                                                            const coinsuranceDays = Math.ceil(newRemainingOOP / clientDailyCoinsurance);
-                                                                            totalDays += coinsuranceDays;
-                                                                        }
-                                                                    } else {
-                                                                        // If deductible counts, reduce OOP by any remaining deductible amount first
-                                                                        let oopAfterDeductible = Math.max(0, newRemainingOOP - newRemainingDeductible);
-                                                                        if (oopAfterDeductible > 0 && clientDailyCoinsurance > 0) {
-                                                                            const coinsuranceDays = Math.ceil(oopAfterDeductible / clientDailyCoinsurance);
-                                                                            totalDays += coinsuranceDays;
-                                                                        }
-                                                                    }
-                                                                    
-                                                                    return `After ${totalDays} more days of treatment (${newRemainingOOP.toLocaleString()} OOP remaining)`;
+                                                                    return `After ${daysNeeded} more days of treatment (${remainingClientResponsibility.toLocaleString()} remaining)`;
                                                                 })()}
                                                             </div>
                                                         </div>
@@ -736,55 +708,21 @@
                                                                         paymentAmount = Math.min(halfOOP, calculation.totals.totalClientCost);
                                                                     }
                                                                     
-                                                                    // Calculate new remaining amounts after payment
-                                                                    const deductiblePaid = Math.min(paymentAmount, calculation.currentStatus.remainingDeductible);
-                                                                    const paymentAfterDeductible = paymentAmount - deductiblePaid;
+                                                                    // Calculate remaining client responsibility after this payment
+                                                                    const remainingClientResponsibility = Math.max(0, calculation.totals.totalClientCost - paymentAmount);
                                                                     
-                                                                    const newRemainingDeductible = Math.max(0, calculation.currentStatus.remainingDeductible - deductiblePaid);
-                                                                    let newRemainingOOP;
-                                                                    
-                                                                    if (benefits.deductibleCountsTowardOOP) {
-                                                                        // Full payment reduces OOP
-                                                                        newRemainingOOP = Math.max(0, calculation.currentStatus.remainingOOP - paymentAmount);
-                                                                    } else {
-                                                                        // Only non-deductible portion reduces OOP
-                                                                        newRemainingOOP = Math.max(0, calculation.currentStatus.remainingOOP - paymentAfterDeductible);
-                                                                    }
-                                                                    
-                                                                    if (newRemainingOOP === 0) {
+                                                                    if (remainingClientResponsibility === 0) {
                                                                         return "Immediately after this payment!";
                                                                     }
                                                                     
-                                                                    // Calculate days needed
-                                                                    const avgDailyRate = calculation.totals.providerCharges / calculation.services.reduce((sum, s) => sum + s.days, 0);
-                                                                    const coinsuranceRate = (parseFloat(benefits.coinsurance) || 0) / 100;
-                                                                    const clientDailyCoinsurance = avgDailyRate * coinsuranceRate;
+                                                                    // Calculate average daily client cost
+                                                                    const totalDays = calculation.services.reduce((sum, s) => sum + s.days, 0);
+                                                                    const avgClientDailyRate = calculation.totals.totalClientCost / totalDays;
                                                                     
-                                                                    let totalDays = 0;
+                                                                    // Days needed = remaining responsibility / daily client rate
+                                                                    const daysNeeded = Math.ceil(remainingClientResponsibility / avgClientDailyRate);
                                                                     
-                                                                    // First, days to satisfy remaining deductible at 100% rate
-                                                                    if (newRemainingDeductible > 0) {
-                                                                        const deductibleDays = Math.ceil(newRemainingDeductible / avgDailyRate);
-                                                                        totalDays += deductibleDays;
-                                                                    }
-                                                                    
-                                                                    // Then calculate OOP days
-                                                                    if (!benefits.deductibleCountsTowardOOP) {
-                                                                        // If deductible doesn't count, need full remaining OOP in coinsurance
-                                                                        if (newRemainingOOP > 0 && clientDailyCoinsurance > 0) {
-                                                                            const coinsuranceDays = Math.ceil(newRemainingOOP / clientDailyCoinsurance);
-                                                                            totalDays += coinsuranceDays;
-                                                                        }
-                                                                    } else {
-                                                                        // If deductible counts, reduce OOP by any remaining deductible amount first
-                                                                        let oopAfterDeductible = Math.max(0, newRemainingOOP - newRemainingDeductible);
-                                                                        if (oopAfterDeductible > 0 && clientDailyCoinsurance > 0) {
-                                                                            const coinsuranceDays = Math.ceil(oopAfterDeductible / clientDailyCoinsurance);
-                                                                            totalDays += coinsuranceDays;
-                                                                        }
-                                                                    }
-                                                                    
-                                                                    return `After ${totalDays} more days of treatment (${newRemainingOOP.toLocaleString()} OOP remaining)`;
+                                                                    return `After ${daysNeeded} more days of treatment (${remainingClientResponsibility.toLocaleString()} remaining)`;
                                                                 })()}
                                                             </div>
                                                         </div>
