@@ -176,23 +176,46 @@
                 const amountAfterDeductible = Math.max(0, allowedAmount - deductibleResponsibility);
                 const coinsuranceResponsibility = amountAfterDeductible * coinsuranceDecimal;
                 
-                // Total theoretical responsibility
-                let theoreticalResponsibility = deductibleResponsibility + coinsuranceResponsibility;
+                // Calculate what counts toward OOP max
+                let amountTowardOOP;
+                if (benefits.deductibleCountsTowardOOP) {
+                    // Both deductible and coinsurance count
+                    amountTowardOOP = deductibleResponsibility + coinsuranceResponsibility;
+                } else {
+                    // Only coinsurance counts
+                    amountTowardOOP = coinsuranceResponsibility;
+                }
                 
-                // Apply OOP max cap
-                const actualResponsibility = Math.min(theoreticalResponsibility, remainingOOP);
+                // Apply OOP max cap only to amounts that count
+                const cappedOOPAmount = Math.min(amountTowardOOP, remainingOOP);
                 
                 // Calculate actual amounts paid
-                const actualDeductiblePaid = Math.min(deductibleResponsibility, remainingOOP);
-                const actualCoinsurancePaid = Math.max(0, actualResponsibility - actualDeductiblePaid);
+                let actualDeductiblePaid = deductibleResponsibility;
+                let actualCoinsurancePaid;
                 
-                const totalClientCost = actualResponsibility;
+                if (benefits.deductibleCountsTowardOOP) {
+                    // If deductible counts, both are subject to OOP cap
+                    if (cappedOOPAmount < deductibleResponsibility) {
+                        actualDeductiblePaid = cappedOOPAmount;
+                        actualCoinsurancePaid = 0;
+                    } else {
+                        actualDeductiblePaid = deductibleResponsibility;
+                        actualCoinsurancePaid = cappedOOPAmount - deductibleResponsibility;
+                    }
+                } else {
+                    // If deductible doesn't count, client pays full deductible plus capped coinsurance
+                    actualDeductiblePaid = deductibleResponsibility;
+                    actualCoinsurancePaid = cappedOOPAmount;
+                }
+                
+                const totalClientCost = actualDeductiblePaid + actualCoinsurancePaid;
                 const insurancePays = allowedAmount - totalClientCost;
 
                 // SIMPLIFIED: Calculate when insurance pays 100% using user's formula
                 let daysUntil100Percent = null;
                 let runningDays = 0;
-                let remainingToPayBeforeOOP = remainingOOP;
+                let runningDeductible = remainingDeductible;
+                let runningOOP = remainingOOP;
                 
                 // Track through services to find when OOP max is reached
                 for (let i = 0; i < selectedServices.length; i++) {
@@ -200,48 +223,55 @@
                     const dailyRate = parseFloat(service.dailyRate);
                     const serviceDays = parseInt(service.days);
                     
-                    // Calculate client's daily cost based on current benefit phase
-                    let clientDailyRate;
-                    if (remainingDeductible > 0) {
-                        // During deductible phase: client pays 100%
-                        clientDailyRate = dailyRate;
-                    } else {
-                        // After deductible: client pays coinsurance%
-                        clientDailyRate = dailyRate * coinsuranceDecimal;
-                    }
-                    
                     // Check each day in this service
                     for (let day = 1; day <= serviceDays; day++) {
-                        if (remainingToPayBeforeOOP <= 0) {
-                            // Already reached OOP max
-                            break;
-                        }
-                        
-                        // Apply daily cost
-                        if (remainingDeductible > 0) {
-                            const deductiblePortion = Math.min(dailyRate, remainingDeductible);
-                            remainingDeductible -= deductiblePortion;
-                            
-                            if (benefits.deductibleCountsTowardOOP) {
-                                remainingToPayBeforeOOP -= deductiblePortion;
-                            }
-                            
-                            // If deductible is satisfied, apply remaining as coinsurance
-                            if (remainingDeductible === 0 && deductiblePortion < dailyRate) {
-                                const coinsurancePortion = (dailyRate - deductiblePortion) * coinsuranceDecimal;
-                                remainingToPayBeforeOOP -= coinsurancePortion;
-                            }
-                        } else {
-                            // Pure coinsurance phase
-                            const coinsurancePortion = dailyRate * coinsuranceDecimal;
-                            remainingToPayBeforeOOP -= coinsurancePortion;
-                        }
-                        
                         runningDays++;
                         
-                        // Check if OOP max reached
-                        if (remainingToPayBeforeOOP <= 0 && daysUntil100Percent === null) {
-                            daysUntil100Percent = runningDays;
+                        // Calculate client cost for this day
+                        let dayClientCost = 0;
+                        let dayOOPContribution = 0;
+                        
+                        if (runningDeductible > 0) {
+                            // In deductible phase
+                            const deductiblePortion = Math.min(dailyRate, runningDeductible);
+                            dayClientCost = deductiblePortion;
+                            runningDeductible -= deductiblePortion;
+                            
+                            // Check if deductible counts toward OOP
+                            if (benefits.deductibleCountsTowardOOP) {
+                                dayOOPContribution = deductiblePortion;
+                            }
+                            
+                            // If daily rate exceeds deductible portion, apply coinsurance to remainder
+                            if (deductiblePortion < dailyRate) {
+                                const remainderAfterDeductible = dailyRate - deductiblePortion;
+                                const coinsurancePortion = remainderAfterDeductible * coinsuranceDecimal;
+                                dayClientCost += coinsurancePortion;
+                                dayOOPContribution += coinsurancePortion; // Coinsurance always counts
+                            }
+                        } else {
+                            // In coinsurance phase
+                            const coinsurancePortion = dailyRate * coinsuranceDecimal;
+                            dayClientCost = coinsurancePortion;
+                            dayOOPContribution = coinsurancePortion; // Coinsurance always counts
+                        }
+                        
+                        // Apply OOP contribution
+                        if (runningOOP > 0) {
+                            const cappedOOPContribution = Math.min(dayOOPContribution, runningOOP);
+                            runningOOP -= cappedOOPContribution;
+                            
+                            // If OOP is capped, adjust client cost for coinsurance portion
+                            if (!benefits.deductibleCountsTowardOOP && runningDeductible === 0 && cappedOOPContribution < dayOOPContribution) {
+                                dayClientCost = cappedOOPContribution;
+                            } else if (benefits.deductibleCountsTowardOOP && cappedOOPContribution < dayOOPContribution) {
+                                dayClientCost = cappedOOPContribution;
+                            }
+                        } else {
+                            // OOP max reached - insurance pays 100%
+                            if (daysUntil100Percent === null) {
+                                daysUntil100Percent = runningDays;
+                            }
                             break;
                         }
                     }
@@ -253,7 +283,14 @@
                 const newDeductibleMet = Math.min(deductible, deductibleMet + actualDeductiblePaid);
                 const newRemainingDeductible = Math.max(0, deductible - newDeductibleMet);
                 
-                let newOOPMet = oopMet + actualResponsibility;
+                let newOOPMet;
+                if (benefits.deductibleCountsTowardOOP) {
+                    // Both deductible and coinsurance count toward OOP
+                    newOOPMet = Math.min(oopMax, oopMet + actualDeductiblePaid + actualCoinsurancePaid);
+                } else {
+                    // Only coinsurance counts toward OOP
+                    newOOPMet = Math.min(oopMax, oopMet + actualCoinsurancePaid);
+                }
                 const newRemainingOOP = Math.max(0, oopMax - newOOPMet);
 
                 setCalculation({
@@ -268,8 +305,7 @@
                         insurancePays: insurancePays,
                         remainingDeductible: newRemainingDeductible,
                         remainingOOP: newRemainingOOP,
-                        oopMaxReached: newRemainingOOP === 0,
-                        theoreticalResponsibility: theoreticalResponsibility
+                        oopMaxReached: newRemainingOOP === 0
                     },
                     currentStatus: {
                         remainingDeductible: remainingDeductible,
@@ -475,10 +511,27 @@
                                                 <div>• After Deductible: Client pays coinsurance {benefits.coinsurance || '[enter %]'}%</div>
                                                 <div>• After OOP Max: Insurance pays 100%</div>
                                                 {!benefits.deductibleCountsTowardOOP && (
-                                                    <div className="text-amber-600">• Deductible does NOT count toward OOP max</div>
+                                                    <div className="text-amber-600 font-semibold">⚠️ Deductible does NOT count toward OOP max</div>
                                                 )}
                                             </div>
                                         </div>
+                                        
+                                        {!benefits.deductibleCountsTowardOOP && parseFloat(benefits.deductible) > 0 && (
+                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                                                <div className="flex items-start">
+                                                    <svg className="w-5 h-5 text-amber-600 mt-0.5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                                    </svg>
+                                                    <div>
+                                                        <p className="font-semibold text-amber-800 text-sm">Important: Deductible Doesn't Count Toward OOP Maximum</p>
+                                                        <p className="text-sm text-amber-700 mt-1">
+                                                            The client must pay the full ${(parseFloat(benefits.deductible) || 0).toLocaleString()} deductible PLUS up to ${(parseFloat(benefits.oopMax) || 0).toLocaleString()} in coinsurance before insurance pays 100%.
+                                                            Total possible cost: ${((parseFloat(benefits.deductible) || 0) + (parseFloat(benefits.oopMax) || 0)).toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         {/* Main Result */}
                                         <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-sm p-6 text-white">
@@ -669,7 +722,12 @@
                                                 
                                                 <div className="border-t pt-3">
                                                     <div className="flex justify-between items-center py-1">
-                                                        <span className="text-sm text-gray-600">Deductible Applied</span>
+                                                        <span className="text-sm text-gray-600">
+                                                            Deductible Applied
+                                                            {!benefits.deductibleCountsTowardOOP && (
+                                                                <span className="text-xs text-amber-600 ml-1">(not toward OOP)</span>
+                                                            )}
+                                                        </span>
                                                         <span className="font-medium text-red-600">-${calculation.totals.deductibleApplied.toLocaleString()}</span>
                                                     </div>
                                                     
