@@ -617,15 +617,7 @@
                                                         </div>
                                                         <div className="text-right">
                                                             <div className="text-2xl font-bold text-gray-800">
-                                                                ${(() => {
-                                                                    if (!benefits.deductibleCountsTowardOOP) {
-                                                                        // If deductible doesn't count, pay full deductible
-                                                                        return Math.min(calculation.currentStatus.remainingDeductible, calculation.totals.totalClientCost).toLocaleString();
-                                                                    } else {
-                                                                        // If it does count, cap at OOP max too
-                                                                        return Math.min(calculation.currentStatus.remainingDeductible, calculation.currentStatus.remainingOOP, calculation.totals.totalClientCost).toLocaleString();
-                                                                    }
-                                                                })()}
+                                                                ${Math.min(calculation.currentStatus.remainingDeductible, calculation.totals.totalClientCost).toLocaleString()}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -636,7 +628,7 @@
                                                                 <div>• Satisfies remaining deductible requirement</div>
                                                                 <div>• After this payment: Client pays only {benefits.coinsurance}% coinsurance</div>
                                                                 <div>• Future services much more affordable</div>
-                                                                {!benefits.deductibleCountsTowardOOP && (
+                                                                {!benefits.deductibleCountsTowardOOP && calculation.currentStatus.remainingDeductible > 0 && (
                                                                     <div className="text-amber-600">• Note: This payment does NOT reduce OOP remaining</div>
                                                                 )}
                                                             </div>
@@ -645,13 +637,12 @@
                                                             <div className="font-medium mb-1 text-purple-800">When Insurance Pays 100%:</div>
                                                             <div className="text-xs">
                                                                 {(() => {
-                                                                    const paymentAmount = !benefits.deductibleCountsTowardOOP ?
-                                                                        Math.min(calculation.currentStatus.remainingDeductible, calculation.totals.totalClientCost) :
-                                                                        Math.min(calculation.currentStatus.remainingDeductible, calculation.currentStatus.remainingOOP, calculation.totals.totalClientCost);
+                                                                    const paymentAmount = Math.min(calculation.currentStatus.remainingDeductible, calculation.totals.totalClientCost);
                                                                     
                                                                     let newRemainingDeductible = Math.max(0, calculation.currentStatus.remainingDeductible - paymentAmount);
                                                                     let newRemainingOOP = calculation.currentStatus.remainingOOP;
                                                                     
+                                                                    // Only reduce OOP if deductible counts
                                                                     if (benefits.deductibleCountsTowardOOP) {
                                                                         newRemainingOOP = Math.max(0, calculation.currentStatus.remainingOOP - paymentAmount);
                                                                     }
@@ -663,18 +654,14 @@
                                                                     // Calculate days needed
                                                                     const avgDailyRate = calculation.totals.providerCharges / calculation.services.reduce((sum, s) => sum + s.days, 0);
                                                                     const coinsuranceRate = (parseFloat(benefits.coinsurance) || 0) / 100;
+                                                                    const clientDailyCoinsurance = avgDailyRate * coinsuranceRate;
                                                                     
                                                                     // Days to satisfy remaining deductible (if any)
                                                                     const deductibleDays = newRemainingDeductible > 0 ? Math.ceil(newRemainingDeductible / avgDailyRate) : 0;
                                                                     
-                                                                    // Days to satisfy OOP after deductible
-                                                                    let oopAfterDeductible = newRemainingOOP;
-                                                                    if (benefits.deductibleCountsTowardOOP && newRemainingDeductible > 0) {
-                                                                        oopAfterDeductible = Math.max(0, newRemainingOOP - newRemainingDeductible);
-                                                                    }
-                                                                    
-                                                                    const coinsuranceDays = oopAfterDeductible > 0 && coinsuranceRate > 0 ? 
-                                                                        Math.ceil(oopAfterDeductible / (avgDailyRate * coinsuranceRate)) : 0;
+                                                                    // Days to satisfy OOP 
+                                                                    const coinsuranceDays = newRemainingOOP > 0 && clientDailyCoinsurance > 0 ? 
+                                                                        Math.ceil(newRemainingOOP / clientDailyCoinsurance) : 0;
                                                                     
                                                                     const totalDays = deductibleDays + coinsuranceDays;
                                                                     
@@ -699,10 +686,10 @@
                                                                 ${(() => {
                                                                     const halfOOP = calculation.currentStatus.remainingOOP * 0.5;
                                                                     if (!benefits.deductibleCountsTowardOOP) {
-                                                                        // Need to pay full deductible first, then half of OOP
-                                                                        const totalNeeded = calculation.currentStatus.remainingDeductible + halfOOP;
-                                                                        return Math.min(totalNeeded, calculation.totals.totalClientCost).toLocaleString();
+                                                                        // Pay deductible + half of OOP
+                                                                        return Math.min(calculation.currentStatus.remainingDeductible + halfOOP, calculation.totals.totalClientCost).toLocaleString();
                                                                     } else {
+                                                                        // Just half of OOP (which includes deductible)
                                                                         return Math.min(halfOOP, calculation.totals.totalClientCost).toLocaleString();
                                                                     }
                                                                 })()}
@@ -734,19 +721,18 @@
                                                                     }
                                                                     
                                                                     // Calculate new remaining amounts
-                                                                    let deductiblePaid = Math.min(paymentAmount, calculation.currentStatus.remainingDeductible);
-                                                                    let paymentAfterDeductible = paymentAmount - deductiblePaid;
+                                                                    const deductiblePaid = Math.min(paymentAmount, calculation.currentStatus.remainingDeductible);
+                                                                    const paymentAfterDeductible = paymentAmount - deductiblePaid;
                                                                     
-                                                                    let newRemainingDeductible = calculation.currentStatus.remainingDeductible - deductiblePaid;
+                                                                    const newRemainingDeductible = Math.max(0, calculation.currentStatus.remainingDeductible - deductiblePaid);
                                                                     let newRemainingOOP;
                                                                     
                                                                     if (benefits.deductibleCountsTowardOOP) {
-                                                                        newRemainingOOP = calculation.currentStatus.remainingOOP - paymentAmount;
+                                                                        newRemainingOOP = Math.max(0, calculation.currentStatus.remainingOOP - paymentAmount);
                                                                     } else {
-                                                                        newRemainingOOP = calculation.currentStatus.remainingOOP - paymentAfterDeductible;
+                                                                        // Only the non-deductible portion reduces OOP
+                                                                        newRemainingOOP = Math.max(0, calculation.currentStatus.remainingOOP - paymentAfterDeductible);
                                                                     }
-                                                                    
-                                                                    newRemainingOOP = Math.max(0, newRemainingOOP);
                                                                     
                                                                     if (newRemainingOOP === 0) {
                                                                         return "Immediately after this payment!";
@@ -755,16 +741,11 @@
                                                                     // Calculate days needed
                                                                     const avgDailyRate = calculation.totals.providerCharges / calculation.services.reduce((sum, s) => sum + s.days, 0);
                                                                     const coinsuranceRate = (parseFloat(benefits.coinsurance) || 0) / 100;
+                                                                    const clientDailyCoinsurance = avgDailyRate * coinsuranceRate;
                                                                     
                                                                     const deductibleDays = newRemainingDeductible > 0 ? Math.ceil(newRemainingDeductible / avgDailyRate) : 0;
-                                                                    
-                                                                    let oopAfterDeductible = newRemainingOOP;
-                                                                    if (benefits.deductibleCountsTowardOOP && newRemainingDeductible > 0) {
-                                                                        oopAfterDeductible = Math.max(0, newRemainingOOP - newRemainingDeductible);
-                                                                    }
-                                                                    
-                                                                    const coinsuranceDays = oopAfterDeductible > 0 && coinsuranceRate > 0 ? 
-                                                                        Math.ceil(oopAfterDeductible / (avgDailyRate * coinsuranceRate)) : 0;
+                                                                    const coinsuranceDays = newRemainingOOP > 0 && clientDailyCoinsurance > 0 ? 
+                                                                        Math.ceil(newRemainingOOP / clientDailyCoinsurance) : 0;
                                                                     
                                                                     const totalDays = deductibleDays + coinsuranceDays;
                                                                     
@@ -788,9 +769,10 @@
                                                             <div className="text-2xl font-bold text-green-700">
                                                                 ${(() => {
                                                                     if (!benefits.deductibleCountsTowardOOP) {
-                                                                        // Need to pay full deductible + full OOP
+                                                                        // Pay deductible + full OOP
                                                                         return (calculation.currentStatus.remainingDeductible + calculation.currentStatus.remainingOOP).toLocaleString();
                                                                     } else {
+                                                                        // Just OOP (which includes deductible)
                                                                         return calculation.currentStatus.remainingOOP.toLocaleString();
                                                                     }
                                                                 })()}
@@ -825,13 +807,13 @@
                                                                 No more out-of-pocket costs for covered services this year
                                                             </div>
                                                         </div>
-                                                        {!benefits.deductibleCountsTowardOOP && (
+                                                        {!benefits.deductibleCountsTowardOOP && calculation.currentStatus.remainingDeductible > 0 && (
                                                             <div className="mt-2 p-2 bg-amber-50 rounded border border-amber-200">
                                                                 <div className="text-xs text-amber-700">
-                                                                    <strong>Total Payment Breakdown:</strong><br/>
-                                                                    Deductible: ${calculation.currentStatus.remainingDeductible.toLocaleString()}<br/>
-                                                                    + OOP Max: ${calculation.currentStatus.remainingOOP.toLocaleString()}<br/>
-                                                                    = Total: ${(calculation.currentStatus.remainingDeductible + calculation.currentStatus.remainingOOP).toLocaleString()}
+                                                                    <strong>Total Payment Breakdown:</strong>
+                                                                    <br/>Deductible: ${calculation.currentStatus.remainingDeductible.toLocaleString()}
+                                                                    <br/>+ OOP Max: ${calculation.currentStatus.remainingOOP.toLocaleString()}
+                                                                    <br/>= Total: ${(calculation.currentStatus.remainingDeductible + calculation.currentStatus.remainingOOP).toLocaleString()}
                                                                 </div>
                                                             </div>
                                                         )}
